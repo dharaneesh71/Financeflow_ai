@@ -1,0 +1,54 @@
+# --- Virtual environments ---
+backend/sudip/
+venv/
+env/
+.venv/
+ENV/
+
+
+# --- Python cache & compiled files ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Virtual environments ---
+venv/
+env/
+.venv/
+ENV/
+env.bak/
+
+# --- IDE / Editor files ---
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# --- OS-specific junk ---
+.DS_Store
+Thumbs.db
+
+# --- Logs and temporary files ---
+*.log
+*.tmp
+*.bak
+*.swp
+
+# --- Build / packaging ---
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# --- Jupyter / Notebook checkpoints ---
+.ipynb_checkpoints/
+
+# --- Cache directories ---
+.cache/
+__pypackages__/
+
+# --- Optional: project-specific ignores ---
+# If you have data or model outputs, ignore them too
+data/
+outputs/
+models/
