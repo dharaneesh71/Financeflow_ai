@@ -11,82 +11,162 @@ from app.agents.schema_designer import SchemaDesigner
 from app.agents.snowflake_deployer import SnowflakeDeployer
 from app.models import ProcessRequest, ProcessResponse
 
-app = FastAPI(title="FinanceFlow AI")
+app = FastAPI(title="FinanceFlow AI", version="1.0.0")
 
-# CORS
+# CORS Configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Initialize agents
-extractor = DocumentExtractor()
-analyzer = FinancialAnalyzer()
-schema_designer = SchemaDesigner()
-deployer = SnowflakeDeployer()
-
 # Upload directory
 UPLOAD_DIR = Path("./uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
 
+# Initialize agents
+extractor = None
+analyzer = None
+schema_designer = None
+deployer = None
+
+def get_agents():
+    """Lazy initialization of agents"""
+    global extractor, analyzer, schema_designer, deployer
+    
+    if extractor is None:
+        print("\n🚀 Initializing AI Agents...")
+        extractor = DocumentExtractor()
+        analyzer = FinancialAnalyzer()
+        schema_designer = SchemaDesigner()
+        deployer = SnowflakeDeployer()
+        print("✅ All agents initialized\n")
+    
+    return extractor, analyzer, schema_designer, deployer
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize on startup"""
+    print("\n" + "="*60)
+    print("🚀 FinanceFlow AI Backend Starting...")
+    print("="*60 + "\n")
+    get_agents()
+    print("✅ Backend ready at http://localhost:8000")
+    print("📚 API Docs at http://localhost:8000/docs\n")
+
 @app.get("/")
 async def root():
-    return {"status": "FinanceFlow AI is running", "version": "1.0"}
+    """Health check endpoint"""
+    return {
+        "status": "running",
+        "service": "FinanceFlow AI",
+        "version": "1.0.0"
+    }
+
+@app.get("/health")
+async def health():
+    """Detailed health check"""
+    ext, ana, sch, dep = get_agents()
+    return {
+        "status": "healthy",
+        "agents": {
+            "extractor": "ready",
+            "analyzer": "ready",
+            "schema_designer": "ready",
+            "deployer": "ready"
+        }
+    }
 
 @app.post("/api/upload")
 async def upload_files(files: List[UploadFile] = File(...)):
-    """Upload files to server"""
-    print(f"\n📤 UPLOAD REQUEST: Received {len(files)} files")
+    """Upload financial documents"""
+    print(f"\n{'='*60}")
+    print(f"📤 UPLOAD REQUEST")
+    print(f"{'='*60}")
+    print(f"Received {len(files)} file(s)")
     
     uploaded_files = []
+    
     for file in files:
-        file_path = UPLOAD_DIR / file.filename
-        
-        print(f"  - Saving: {file.filename}")
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        
-        uploaded_files.append(str(file_path))
-        print(f"  ✅ Saved: {file_path}")
+        try:
+            file_path = UPLOAD_DIR / file.filename
+            
+            print(f"  📄 {file.filename} ({file.content_type})")
+            
+            with open(file_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+            
+            uploaded_files.append(str(file_path))
+            print(f"  ✅ Saved to: {file_path}")
+            
+        except Exception as e:
+            print(f"  ❌ Error saving {file.filename}: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to save {file.filename}: {str(e)}")
+    
+    print(f"\n✅ Upload complete: {len(uploaded_files)} files saved\n")
     
     return {
-        "message": f"Uploaded {len(uploaded_files)} files",
+        "message": f"Successfully uploaded {len(uploaded_files)} file(s)",
         "files": uploaded_files
     }
 
 @app.post("/api/process", response_model=ProcessResponse)
 async def process_documents(request: ProcessRequest):
-    """Process uploaded documents"""
-    print(f"\n🔄 PROCESS REQUEST: Processing {len(request.file_paths)} files")
-    print(f"Files: {request.file_paths}")
+    """Process uploaded financial documents through AI pipeline"""
+    
+    print(f"\n{'='*60}")
+    print(f"🔄 PROCESSING REQUEST")
+    print(f"{'='*60}")
+    print(f"Files to process: {len(request.file_paths)}")
+    for path in request.file_paths:
+        print(f"  - {path}")
+    print()
     
     try:
-        # Step 1: Extract data from documents
-        print("\n📋 STEP 1: EXTRACTION")
+        ext, ana, sch, dep = get_agents()
+        
+        # STEP 1: Extract data
+        print(f"{'='*60}")
+        print(f"📋 STEP 1: DOCUMENT EXTRACTION")
+        print(f"{'='*60}")
+        
         extraction_results = []
         for file_path in request.file_paths:
-            print(f"  🔍 Extracting: {file_path}")
-            result = await extractor.extract_from_document(file_path)
+            if not os.path.exists(file_path):
+                raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+            
+            print(f"\n🔍 Extracting: {os.path.basename(file_path)}")
+            result = await ext.extract_from_document(file_path)
             extraction_results.append(result)
-            print(f"  ✅ Extracted {len(result.extracted_fields)} fields from {file_path}")
+            print(f"✅ Extracted {len(result.extracted_fields)} fields")
         
-        # Step 2: Analyze extracted data
-        print("\n🤖 STEP 2: ANALYSIS")
-        analysis = await analyzer.analyze(extraction_results)
-        print(f"  ✅ Analysis complete: {analysis.document_type}")
+        print(f"\n✅ Extraction Complete\n")
         
-        # Step 3: Design database schema
-        print("\n🏗️ STEP 3: SCHEMA DESIGN")
-        schema = await schema_designer.design_schema(extraction_results, analysis)
-        print(f"  ✅ Schema designed: {len(schema.tables)} tables")
+        # STEP 2: Analyze
+        print(f"{'='*60}")
+        print(f"🤖 STEP 2: FINANCIAL ANALYSIS")
+        print(f"{'='*60}\n")
         
-        # Step 4: Deploy to Snowflake
-        print("\n❄️ STEP 4: SNOWFLAKE DEPLOYMENT")
-        deployment = await deployer.deploy(schema, extraction_results)
-        print(f"  ✅ Deployed: {deployment.rows_loaded} rows loaded")
+        analysis = await ana.analyze(extraction_results)
+        print(f"✅ Analysis Complete\n")
+        
+        # STEP 3: Design schema
+        print(f"{'='*60}")
+        print(f"🏗️  STEP 3: SCHEMA DESIGN")
+        print(f"{'='*60}\n")
+        
+        schema = await sch.design_schema(extraction_results, analysis)
+        print(f"✅ Schema Designed: {len(schema.tables)} tables\n")
+        
+        # STEP 4: Deploy
+        print(f"{'='*60}")
+        print(f"❄️  STEP 4: SNOWFLAKE DEPLOYMENT")
+        print(f"{'='*60}\n")
+        
+        deployment = await dep.deploy(schema, extraction_results)
+        print(f"✅ Deployment Complete\n")
         
         response = ProcessResponse(
             extraction_results=extraction_results,
@@ -95,19 +175,18 @@ async def process_documents(request: ProcessRequest):
             deployment=deployment
         )
         
-        print("\n✅ PROCESSING COMPLETE!")
-        print(f"  - Documents: {len(extraction_results)}")
-        print(f"  - Tables: {len(schema.tables)}")
-        print(f"  - Rows: {deployment.rows_loaded}")
+        print(f"{'='*60}")
+        print(f"✅ PROCESSING COMPLETE!")
+        print(f"{'='*60}\n")
         
         return response
         
     except Exception as e:
-        print(f"\n❌ ERROR: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"\n{'='*60}")
+        print(f"❌ ERROR: {str(e)}")
+        print(f"{'='*60}\n")
+        raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)

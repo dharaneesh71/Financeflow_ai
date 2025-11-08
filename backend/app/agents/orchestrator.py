@@ -9,7 +9,7 @@ from app.models import (
 from app.agents.extractor import DocumentExtractor
 from app.agents.analyzer import FinancialAnalyzer
 from app.agents.schema_designer import SchemaDesigner
-from app.agents.deployer import SnowflakeDeployer
+from backend.app.agents.snowflake_deployer import SnowflakeDeployer
 
 class PipelineState(TypedDict):
     """State for the processing pipeline"""

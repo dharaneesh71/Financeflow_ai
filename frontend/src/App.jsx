@@ -1,5 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Upload, FileText, Database, CheckCircle, AlertCircle, Loader, TrendingUp, BarChart3, DollarSign, Sun, Moon, Terminal, Activity, Eye, X } from 'lucide-react';
+import { 
+  Upload, FileText, Database, CheckCircle, AlertCircle, 
+  Loader, TrendingUp, BarChart3, DollarSign, Sun, 
+  Moon, Terminal, Activity, X, Download 
+} from 'lucide-react';
 
 const API_BASE = 'http://localhost:8000/api';
 
@@ -31,14 +35,15 @@ function App() {
     setFiles(selectedFiles);
     setError('');
     setResults(null);
-    addLog(`Selected ${selectedFiles.length} file(s): ${selectedFiles.map(f => f.name).join(', ')}`, 'info');
+    addLog(`📁 Selected ${selectedFiles.length} file(s): ${selectedFiles.map(f => f.name).join(', ')}`, 'info');
   };
 
   const uploadFiles = async () => {
     const formData = new FormData();
     files.forEach(file => formData.append('files', file));
 
-    addLog('📤 Uploading files to backend...', 'info');
+    addLog('📤 Uploading files to server...', 'info');
+    
     const response = await fetch(`${API_BASE}/upload`, {
       method: 'POST',
       body: formData,
@@ -50,12 +55,12 @@ function App() {
     }
     
     const result = await response.json();
-    addLog(`✅ Files uploaded successfully: ${result.files.length} files`, 'success');
+    addLog(`✅ Upload complete: ${result.files.length} file(s)`, 'success');
     return result;
   };
 
   const processDocuments = async (filePaths) => {
-    addLog('🔄 Sending files for processing...', 'info');
+    addLog('🔄 Starting AI processing pipeline...', 'info');
     
     const response = await fetch(`${API_BASE}/process`, {
       method: 'POST',
@@ -69,7 +74,7 @@ function App() {
     }
     
     const result = await response.json();
-    addLog('✅ Processing complete!', 'success');
+    addLog('✅ Processing pipeline complete!', 'success');
     return result;
   };
 
@@ -84,48 +89,57 @@ function App() {
     setError('');
     setResults(null);
     setProgress(0);
-    setLogs([]);
+    setLogs([{ timestamp: new Date().toLocaleTimeString(), message: '🚀 Starting processing...', type: 'info' }]);
 
     try {
-      // Stage 1: Upload
+      // Stage 1: Upload (0-20%)
       setCurrentStage('Uploading Documents');
       setStageDetails('Transferring files to server...');
-      setProgress(10);
+      setProgress(5);
+      
       const uploadResult = await uploadFiles();
       setProgress(20);
+      addLog(`📦 ${uploadResult.files.length} file(s) uploaded successfully`, 'success');
 
-      // Stage 2: Extract with LandingAI
+      // Stage 2: Extract (20-50%)
       setCurrentStage('Extracting Data');
-      setStageDetails('LandingAI is analyzing document structure and extracting fields...');
-      addLog('🔍 LandingAI extracting financial data...', 'info');
-      setProgress(30);
-
-      // Stage 3: Process with backend
+      setStageDetails('LandingAI is analyzing document structure and extracting financial fields...');
+      setProgress(25);
+      addLog('🔍 LandingAI extraction in progress...', 'info');
+      
+      // Start processing (backend handles all stages)
       const processResult = await processDocuments(uploadResult.files);
       
       setProgress(50);
+      addLog(`✅ Extracted ${processResult.extraction_results?.[0]?.extracted_fields?.length || 0} fields`, 'success');
+
+      // Stage 3: Analyze (50-70%)
       setCurrentStage('Analyzing Data');
-      setStageDetails('Gemini AI is analyzing extracted data and detecting relationships...');
-      addLog('🤖 Gemini analyzing financial data...', 'info');
+      setStageDetails('Gemini AI is analyzing extracted data and detecting patterns...');
       setProgress(60);
+      addLog('🤖 Gemini AI analysis complete', 'success');
+      setProgress(70);
 
+      // Stage 4: Schema (70-85%)
       setCurrentStage('Designing Schema');
-      setStageDetails('Gemini AI is designing optimal database schema...');
-      addLog('🏗️ Designing database schema...', 'info');
+      setStageDetails('Creating optimal database structure for Snowflake...');
       setProgress(75);
+      addLog(`🏗️ Designed ${processResult.schema?.tables?.length || 0} table schema`, 'success');
+      setProgress(85);
 
+      // Stage 5: Deploy (85-100%)
       setCurrentStage('Deploying to Snowflake');
-      setStageDetails('Creating tables and loading data to Snowflake...');
-      addLog('❄️ Deploying to Snowflake...', 'info');
+      setStageDetails('Creating tables and loading data...');
       setProgress(90);
-
+      addLog('❄️ Snowflake deployment in progress...', 'info');
+      
       setResults(processResult);
       setProgress(100);
       setCurrentStage('Complete');
       setStageDetails('All data successfully processed and deployed!');
       
-      addLog(`✅ SUCCESS: ${processResult.extraction_results?.length || 0} documents processed`, 'success');
-      addLog(`✅ Created ${processResult.schema?.tables?.length || 0} tables in Snowflake`, 'success');
+      addLog(`✅ SUCCESS: ${processResult.extraction_results?.length || 0} document(s) processed`, 'success');
+      addLog(`✅ Created ${processResult.schema?.tables?.length || 0} tables`, 'success');
       addLog(`✅ Loaded ${processResult.deployment?.rows_loaded || 0} rows`, 'success');
 
     } catch (err) {
@@ -134,6 +148,7 @@ function App() {
       setStageDetails('');
       setProgress(0);
       addLog(`❌ ERROR: ${err.message}`, 'error');
+      console.error('Processing error:', err);
     } finally {
       setProcessing(false);
     }
@@ -146,7 +161,7 @@ function App() {
     setCurrentStage('');
     setStageDetails('');
     setProgress(0);
-    addLog('🔄 Form reset, ready for new documents', 'info');
+    addLog('🔄 Ready for new documents', 'info');
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -183,6 +198,9 @@ function App() {
               >
                 <Terminal className="w-4 h-4" />
                 <span className="text-sm font-medium">Logs</span>
+                {logs.length > 0 && (
+                  <span className="bg-blue-500 text-white text-xs px-2 py-0.5 rounded-full">{logs.length}</span>
+                )}
               </button>
               <button
                 onClick={() => setDarkMode(!darkMode)}
@@ -199,12 +217,15 @@ function App() {
       {showLogs && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
           <div className={`${darkMode ? 'bg-gray-900' : 'bg-white'} rounded-2xl shadow-2xl max-w-4xl w-full max-h-[80vh] flex flex-col`}>
-            <div className="flex items-center justify-between p-6 border-b border-gray-700">
+            <div className={`flex items-center justify-between p-6 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
               <div className="flex items-center gap-3">
                 <Terminal className="w-6 h-6 text-blue-400" />
                 <h2 className={`text-2xl font-bold ${textClass}`}>System Logs</h2>
               </div>
-              <button onClick={() => setShowLogs(false)} className="p-2 hover:bg-gray-700 rounded-lg">
+              <button 
+                onClick={() => setShowLogs(false)} 
+                className={`p-2 hover:bg-gray-700 rounded-lg transition-colors ${textClass}`}
+              >
                 <X className="w-6 h-6" />
               </button>
             </div>
@@ -216,7 +237,7 @@ function App() {
                   <div key={idx} className={`mb-2 ${
                     log.type === 'error' ? 'text-red-400' :
                     log.type === 'success' ? 'text-green-400' :
-                    'text-gray-400'
+                    darkMode ? 'text-gray-400' : 'text-gray-700'
                   }`}>
                     <span className="text-gray-600">[{log.timestamp}]</span> {log.message}
                   </div>
@@ -309,7 +330,7 @@ function App() {
           </div>
         )}
 
-        {/* Processing Stage Indicator */}
+        {/* Processing Stage */}
         {processing && (
           <div className={`${cardClass} rounded-2xl shadow-2xl p-8 mb-8`}>
             <div className="space-y-6">
@@ -332,13 +353,12 @@ function App() {
                 <span className={`text-3xl font-bold ${textClass}`}>{progress}%</span>
               </div>
 
-              {/* Stage Checkpoints */}
               <div className="grid grid-cols-5 gap-2 mt-6">
                 {[
                   { name: 'Upload', progress: 20 },
-                  { name: 'Extract', progress: 40 },
-                  { name: 'Analyze', progress: 60 },
-                  { name: 'Schema', progress: 80 },
+                  { name: 'Extract', progress: 50 },
+                  { name: 'Analyze', progress: 70 },
+                  { name: 'Schema', progress: 85 },
                   { name: 'Deploy', progress: 100 }
                 ].map((stage, idx) => (
                   <div key={idx} className="text-center">
@@ -363,120 +383,72 @@ function App() {
         {results && (
           <div className="space-y-6">
             <div className="bg-green-500 bg-opacity-20 backdrop-blur-lg rounded-2xl shadow-2xl p-6 border border-green-500 border-opacity-30">
-              <div className="flex items-center gap-4">
-                <CheckCircle className="w-12 h-12 text-green-400" />
-                <div>
-                  <h3 className="text-2xl font-bold text-white mb-1">Processing Complete!</h3>
-                  <p className="text-green-200">Successfully processed and deployed to Snowflake</p>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <CheckCircle className="w-12 h-12 text-green-400" />
+                  <div>
+                    <h3 className="text-2xl font-bold text-white mb-1">Processing Complete!</h3>
+                    <p className="text-green-200">All documents successfully processed and deployed</p>
+                  </div>
+                </div>
+                <button
+                  onClick={resetForm}
+                  className="px-6 py-3 bg-white bg-opacity-20 hover:bg-opacity-30 text-white rounded-lg transition-colors"
+                >
+                  Process New Documents
+                </button>
+              </div>
+            </div>
+
+            {/* Stats Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className={`${cardClass} rounded-xl p-6`}>
+                <div className="flex items-center gap-4">
+                  <FileText className="w-10 h-10 text-blue-400" />
+                  <div>
+                    <p className={textMutedClass}>Documents Processed</p>
+                    <p className={`text-3xl font-bold ${textClass}`}>{results.extraction_results?.length || 0}</p>
+                  </div>
+                </div>
+              </div>
+              <div className={`${cardClass} rounded-xl p-6`}>
+                <div className="flex items-center gap-4">
+                  <Database className="w-10 h-10 text-purple-400" />
+                  <div>
+                    <p className={textMutedClass}>Tables Created</p>
+                    <p className={`text-3xl font-bold ${textClass}`}>{results.schema?.tables?.length || 0}</p>
+                  </div>
+                </div>
+              </div>
+              <div className={`${cardClass} rounded-xl p-6`}>
+                <div className="flex items-center gap-4">
+                  <BarChart3 className="w-10 h-10 text-green-400" />
+                  <div>
+                    <p className={textMutedClass}>Rows Loaded</p>
+                    <p className={`text-3xl font-bold ${textClass}`}>{results.deployment?.rows_loaded || 0}</p>
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div className="grid md:grid-cols-3 gap-6">
-              <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl p-6 shadow-lg">
-                <div className="flex items-center justify-between mb-2">
-                  <FileText className="w-8 h-8 text-white opacity-80" />
-                  <span className="text-3xl font-bold text-white">{results.extraction_results?.length || 0}</span>
-                </div>
-                <p className="text-blue-100 font-semibold">Documents Processed</p>
-              </div>
-
-              <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl p-6 shadow-lg">
-                <div className="flex items-center justify-between mb-2">
-                  <Database className="w-8 h-8 text-white opacity-80" />
-                  <span className="text-3xl font-bold text-white">{results.schema?.tables?.length || 0}</span>
-                </div>
-                <p className="text-purple-100 font-semibold">Tables Created</p>
-              </div>
-
-              <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-2xl p-6 shadow-lg">
-                <div className="flex items-center justify-between mb-2">
-                  <BarChart3 className="w-8 h-8 text-white opacity-80" />
-                  <span className="text-3xl font-bold text-white">{results.deployment?.rows_loaded || 0}</span>
-                </div>
-                <p className="text-green-100 font-semibold">Rows Loaded</p>
+            {/* Deployment Info */}
+            <div className={`${cardClass} rounded-xl p-6`}>
+              <h4 className={`text-xl font-bold ${textClass} mb-4`}>Snowflake Deployment</h4>
+              <div className="space-y-2">
+                <p className={textMutedClass}>
+                  <span className="font-semibold">Database:</span> {results.deployment?.database}
+                </p>
+                <p className={textMutedClass}>
+                  <span className="font-semibold">Schema:</span> {results.deployment?.schema}
+                </p>
+                <p className={textMutedClass}>
+                  <span className="font-semibold">Status:</span> {results.deployment?.status}
+                </p>
               </div>
             </div>
-
-            {results.extraction_results && results.extraction_results.length > 0 && (
-              <div className={`${cardClass} rounded-2xl shadow-2xl p-8`}>
-                <h3 className={`text-2xl font-bold ${textClass} mb-6 flex items-center gap-3`}>
-                  <DollarSign className="w-7 h-7 text-green-400" />
-                  Extracted Financial Data
-                </h3>
-                {results.extraction_results.map((result, idx) => (
-                  <div key={idx} className="mb-6">
-                    <div className="flex items-center gap-3 mb-4">
-                      <span className="px-4 py-2 bg-purple-500 bg-opacity-30 text-purple-200 rounded-lg font-semibold">
-                        {result.document_type?.replace('_', ' ').toUpperCase()}
-                      </span>
-                      <span className={textMutedClass}>{result.period}</span>
-                    </div>
-                    <div className="grid md:grid-cols-2 gap-4">
-                      {result.extracted_fields?.slice(0, 6).map((field, fidx) => (
-                        <div key={fidx} className={`${darkMode ? 'bg-gray-700' : 'bg-gray-100'} p-4 rounded-lg`}>
-                          <p className={`${textMutedClass} text-sm mb-1`}>{field.field_name}</p>
-                          <p className={`text-2xl font-bold ${textClass}`}>${field.value?.toLocaleString()}</p>
-                          <p className="text-xs text-green-400 mt-1">{(field.confidence * 100).toFixed(1)}% confidence</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {results.schema && (
-              <div className={`${cardClass} rounded-2xl shadow-2xl p-8`}>
-                <h3 className={`text-2xl font-bold ${textClass} mb-6 flex items-center gap-3`}>
-                  <Database className="w-7 h-7 text-blue-400" />
-                  Generated Database Schema
-                </h3>
-                <div className="space-y-4 mb-6">
-                  {results.schema.tables?.map((table, idx) => (
-                    <div key={idx} className={`${darkMode ? 'bg-gray-700' : 'bg-gray-100'} p-4 rounded-lg`}>
-                      <h4 className={`text-lg font-bold ${textClass} mb-3`}>{table.table_name}</h4>
-                      <div className="space-y-2">
-                        {table.columns?.slice(0, 5).map((col, cidx) => (
-                          <div key={cidx} className="flex items-center gap-3 text-sm">
-                            <span className="text-purple-400 font-mono">{col.name}</span>
-                            <span className={textMutedClass}>{col.type}</span>
-                            {col.constraints && <span className="text-blue-400 text-xs">{col.constraints}</span>}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                
-                {results.schema.ddl_sql && (
-                  <div className={`${darkMode ? 'bg-gray-950' : 'bg-gray-900'} rounded-lg p-4 overflow-x-auto`}>
-                    <pre className="text-green-400 text-sm font-mono whitespace-pre-wrap">
-                      {results.schema.ddl_sql.substring(0, 500)}
-                      {results.schema.ddl_sql.length > 500 && '...'}
-                    </pre>
-                  </div>
-                )}
-              </div>
-            )}
-
-            <button
-              onClick={resetForm}
-              className="w-full py-4 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-bold rounded-xl transition-all shadow-lg"
-            >
-              Process More Documents
-            </button>
           </div>
         )}
       </main>
-
-      <footer className={`${darkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200'} bg-opacity-50 backdrop-blur-md border-t mt-20`}>
-        <div className="max-w-7xl mx-auto px-6 py-8 text-center">
-          <p className={textMutedClass}>
-            Powered by <span className="text-blue-400 font-semibold">LandingAI</span> + <span className="text-purple-400 font-semibold">Gemini</span> + <span className="text-cyan-400 font-semibold">Snowflake</span>
-          </p>
-        </div>
-      </footer>
     </div>
   );
 }

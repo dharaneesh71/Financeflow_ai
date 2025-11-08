@@ -1,54 +1,50 @@
-# --- Virtual environments ---
-backend/sudip/
-sudip/
-env/
-.sudip/
-ENV/
-
-
-# --- Python cache & compiled files ---
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
-
-# --- Virtual environments ---
-venv/
+*.so
+.Python
 env/
-.venv/
+venv/
 ENV/
-env.bak/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# --- IDE / Editor files ---
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Uploads
+uploads/
+*.pdf
+*.png
+*.jpg
+*.jpeg
+
+# IDE
 .vscode/
 .idea/
-*.sublime-project
-*.sublime-workspace
+*.swp
+*.swo
+*~
 
-# --- OS-specific junk ---
+# OS
 .DS_Store
 Thumbs.db
 
-# --- Logs and temporary files ---
+# Logs
 *.log
-*.tmp
-*.bak
-*.swp
-
-# --- Build / packaging ---
-build/
-dist/
-*.egg-info/
-.eggs/
-
-# --- Jupyter / Notebook checkpoints ---
-.ipynb_checkpoints/
-
-# --- Cache directories ---
-.cache/
-__pypackages__/
-
-# --- Optional: project-specific ignores ---
-# If you have data or model outputs, ignore them too
-data/
-outputs/
-models/

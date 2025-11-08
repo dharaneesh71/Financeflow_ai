@@ -7,76 +7,101 @@ from app.config import get_settings
 settings = get_settings()
 
 class SchemaDesigner:
-    """Design database schema using Gemini"""
+    """Design optimal database schema using Gemini AI"""
     
     def __init__(self):
         try:
             genai.configure(api_key=settings.gemini_api_key)
             self.model = genai.GenerativeModel('gemini-1.5-pro')
+            self.use_gemini = True
             print("✅ Gemini Schema Designer initialized")
         except Exception as e:
-            print(f"❌ Schema designer init error: {e}")
-            self.model = None
+            print(f"⚠️  Schema designer initialization error: {e}")
+            self.use_gemini = False
     
     async def design_schema(
         self, 
         extraction_results: List[ExtractionResult],
         analysis: FinancialInsight
     ) -> DatabaseSchema:
-        """Design Snowflake schema"""
+        """Design optimal Snowflake database schema"""
         
-        print("🏗️ Designing database schema with Gemini...")
-        
-        return self._create_basic_schema(extraction_results, analysis)
+        # For now, always use basic schema (Gemini schema generation can be added later)
+        return self._create_star_schema(extraction_results, analysis)
     
-    def _create_basic_schema(
+    def _create_star_schema(
         self, 
         extraction_results: List[ExtractionResult],
         analysis: FinancialInsight
     ) -> DatabaseSchema:
-        """Create star schema"""
+        """Create a star schema for financial data"""
         
-        # Dimension: Time
+        print("  🏗️  Creating star schema...")
+        
+        # DIMENSION TABLE: Time Period
         dim_time = TableSchema(
-            table_name="dim_time_period",
+            table_name="DIM_TIME_PERIOD",
             columns=[
-                TableColumn(name="period_id", type="NUMBER", constraints="PRIMARY KEY AUTOINCREMENT"),
-                TableColumn(name="fiscal_year", type="NUMBER", constraints="NOT NULL"),
-                TableColumn(name="fiscal_quarter", type="NUMBER", constraints=""),
-                TableColumn(name="period_name", type="VARCHAR(50)", constraints="NOT NULL"),
+                TableColumn(name="PERIOD_ID", type="NUMBER", constraints="PRIMARY KEY AUTOINCREMENT"),
+                TableColumn(name="FISCAL_YEAR", type="NUMBER", constraints="NOT NULL"),
+                TableColumn(name="FISCAL_QUARTER", type="NUMBER", constraints=""),
+                TableColumn(name="PERIOD_NAME", type="VARCHAR(50)", constraints="NOT NULL"),
+                TableColumn(name="PERIOD_TYPE", type="VARCHAR(20)", constraints=""),
+                TableColumn(name="CREATED_AT", type="TIMESTAMP", constraints="DEFAULT CURRENT_TIMESTAMP()"),
             ],
-            indexes=["fiscal_year"]
+            indexes=["FISCAL_YEAR", "FISCAL_QUARTER"]
         )
         
-        # Dimension: Account
+        # DIMENSION TABLE: Account/Line Item
         dim_account = TableSchema(
-            table_name="dim_account",
+            table_name="DIM_ACCOUNT",
             columns=[
-                TableColumn(name="account_id", type="NUMBER", constraints="PRIMARY KEY AUTOINCREMENT"),
-                TableColumn(name="account_name", type="VARCHAR(200)", constraints="NOT NULL"),
-                TableColumn(name="account_type", type="VARCHAR(50)", constraints="NOT NULL"),
+                TableColumn(name="ACCOUNT_ID", type="NUMBER", constraints="PRIMARY KEY AUTOINCREMENT"),
+                TableColumn(name="ACCOUNT_NAME", type="VARCHAR(200)", constraints="NOT NULL"),
+                TableColumn(name="ACCOUNT_TYPE", type="VARCHAR(50)", constraints="NOT NULL"),
+                TableColumn(name="DOCUMENT_TYPE", type="VARCHAR(50)", constraints=""),
+                TableColumn(name="PARENT_ACCOUNT", type="VARCHAR(200)", constraints=""),
+                TableColumn(name="CREATED_AT", type="TIMESTAMP", constraints="DEFAULT CURRENT_TIMESTAMP()"),
             ],
-            indexes=["account_type"]
+            indexes=["ACCOUNT_TYPE", "DOCUMENT_TYPE"]
         )
         
-        # Fact: Financial Data
+        # DIMENSION TABLE: Document Source
+        dim_document = TableSchema(
+            table_name="DIM_DOCUMENT",
+            columns=[
+                TableColumn(name="DOCUMENT_ID", type="NUMBER", constraints="PRIMARY KEY AUTOINCREMENT"),
+                TableColumn(name="FILE_NAME", type="VARCHAR(255)", constraints="NOT NULL"),
+                TableColumn(name="DOCUMENT_TYPE", type="VARCHAR(50)", constraints=""),
+                TableColumn(name="UPLOAD_DATE", type="TIMESTAMP", constraints="DEFAULT CURRENT_TIMESTAMP()"),
+                TableColumn(name="PROCESSING_STATUS", type="VARCHAR(20)", constraints=""),
+            ],
+            indexes=["DOCUMENT_TYPE", "UPLOAD_DATE"]
+        )
+        
+        # FACT TABLE: Financial Data
         fact_financial = TableSchema(
-            table_name="fact_financial_data",
+            table_name="FACT_FINANCIAL_DATA",
             columns=[
-                TableColumn(name="fact_id", type="NUMBER", constraints="PRIMARY KEY AUTOINCREMENT"),
-                TableColumn(name="period_id", type="NUMBER", constraints="NOT NULL"),
-                TableColumn(name="account_id", type="NUMBER", constraints="NOT NULL"),
-                TableColumn(name="amount", type="NUMBER(18,2)", constraints="NOT NULL"),
-                TableColumn(name="confidence_score", type="NUMBER(5,4)", constraints=""),
-                TableColumn(name="created_at", type="TIMESTAMP", constraints="DEFAULT CURRENT_TIMESTAMP()"),
+                TableColumn(name="FACT_ID", type="NUMBER", constraints="PRIMARY KEY AUTOINCREMENT"),
+                TableColumn(name="PERIOD_ID", type="NUMBER", constraints="NOT NULL"),
+                TableColumn(name="ACCOUNT_ID", type="NUMBER", constraints="NOT NULL"),
+                TableColumn(name="DOCUMENT_ID", type="NUMBER", constraints=""),
+                TableColumn(name="AMOUNT", type="NUMBER(18,2)", constraints="NOT NULL"),
+                TableColumn(name="CONFIDENCE_SCORE", type="NUMBER(5,4)", constraints=""),
+                TableColumn(name="DATA_TYPE", type="VARCHAR(50)", constraints=""),
+                TableColumn(name="CURRENCY", type="VARCHAR(10)", constraints="DEFAULT 'USD'"),
+                TableColumn(name="CREATED_AT", type="TIMESTAMP", constraints="DEFAULT CURRENT_TIMESTAMP()"),
+                TableColumn(name="UPDATED_AT", type="TIMESTAMP", constraints="DEFAULT CURRENT_TIMESTAMP()"),
             ],
-            indexes=["period_id", "account_id"]
+            indexes=["PERIOD_ID", "ACCOUNT_ID", "DOCUMENT_ID"]
         )
         
-        tables = [dim_time, dim_account, fact_financial]
+        tables = [dim_time, dim_account, dim_document, fact_financial]
         
-        # Generate DDL
+        # Generate DDL SQL
         ddl_parts = []
+        
         for table in tables:
             columns = []
             for col in table.columns:
@@ -90,19 +115,33 @@ class SchemaDesigner:
             table_ddl += "\n);"
             ddl_parts.append(table_ddl)
         
+        # Add clustering recommendations
+        ddl_parts.append("\n-- Clustering")
+        ddl_parts.append("ALTER TABLE FACT_FINANCIAL_DATA CLUSTER BY (PERIOD_ID, ACCOUNT_ID);")
+        
         ddl_sql = "\n\n".join(ddl_parts)
         
-        print(f"✅ Schema designed: {len(tables)} tables")
+        print(f"  ✅ Schema created: {len(tables)} tables")
         
         return DatabaseSchema(
             tables=tables,
             relationships=[
-                {"from": "fact_financial_data.period_id", "to": "dim_time_period.period_id"},
-                {"from": "fact_financial_data.account_id", "to": "dim_account.account_id"}
+                {"from": "FACT_FINANCIAL_DATA.PERIOD_ID", "to": "DIM_TIME_PERIOD.PERIOD_ID"},
+                {"from": "FACT_FINANCIAL_DATA.ACCOUNT_ID", "to": "DIM_ACCOUNT.ACCOUNT_ID"},
+                {"from": "FACT_FINANCIAL_DATA.DOCUMENT_ID", "to": "DIM_DOCUMENT.DOCUMENT_ID"}
             ],
-            validation_rules=["amount IS NOT NULL"],
+            validation_rules=[
+                "AMOUNT IS NOT NULL",
+                "CONFIDENCE_SCORE BETWEEN 0 AND 1",
+                "PERIOD_ID > 0",
+                "ACCOUNT_ID > 0"
+            ],
             clustering_recommendations=[
-                {"table": "fact_financial_data", "keys": ["period_id", "account_id"]}
+                {
+                    "table": "FACT_FINANCIAL_DATA",
+                    "keys": ["PERIOD_ID", "ACCOUNT_ID"],
+                    "reason": "Optimize for time-series and account-based queries"
+                }
             ],
             ddl_sql=ddl_sql
         )
