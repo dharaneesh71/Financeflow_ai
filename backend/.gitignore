@@ -1,7 +1,7 @@
 # --- Virtual environments ---
 backend/sudip/
 sudip/
-.env/
+env/
 .sudip/
 ENV/
 
