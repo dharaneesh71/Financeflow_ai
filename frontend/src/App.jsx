@@ -1,62 +1,251 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Upload, FileText, Database, CheckCircle, AlertCircle, 
-  Loader, TrendingUp, BarChart3, Sun, Moon, Terminal, 
-  Activity, X, Sparkles, Search, Edit, Trash2, Plus, 
-  ArrowRight, ArrowLeft
+  Loader, TrendingUp, Sun, Moon, Terminal, 
+  Activity, X, Sparkles, Edit, Trash2, Plus, 
+  ArrowRight, ArrowLeft, LogOut, User, Home, Settings,
+  Clock, Zap, Shield, Menu, Bell, Eye, 
+  EyeOff, Lock, Mail, BarChart3
 } from 'lucide-react';
+
+// --- NEW SNOWFALL COMPONENT (v2) ---
+// Creates a CSS-based snowfall animation
+const Snowfall = () => {
+  const snowflakeCount = 50; // Adjust number of snowflakes
+  return (
+    <div className="snowfall-container" aria-hidden="true">
+      {Array.from({ length: snowflakeCount }).map((_, i) => (
+        <div 
+          key={i} 
+          className="snowflake" 
+          style={{
+            '--size': `${Math.random() * 0.5 + 0.4}rem`,
+            '--left-start': `${Math.random() * 100}vw`,
+            '--left-end': `${Math.random() * 100}vw`,
+            '--animation-delay': `${Math.random() * -10}s`,
+            '--animation-duration': `${Math.random() * 10 + 10}s`,
+            '--flutter-duration': `${Math.random() * 2 + 3}s`,
+          }}
+        >
+          {/* This span handles the flutter, while the parent div handles the fall */}
+          <span className="flutter">❄</span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// --- A simple fade-in animation component ---
+const FadeIn = ({ children, key }) => {
+  return (
+    <div key={key} className="animate-fade-in">
+      {children}
+    </div>
+  );
+};
 
 const API_BASE = 'http://localhost:8000/api';
 
 function App() {
   const [darkMode, setDarkMode] = useState(true);
-  const [step, setStep] = useState(1); // 1: upload, 2: suggest, 3: review, 4: process, 5: results
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [showLogin, setShowLogin] = useState(true);
+  const [showPassword, setShowPassword] = useState(false);
+  const [currentView, setCurrentView] = useState('home');
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   
-  // File and processing state
+  // Auth State
+  const [username, setUsername] = useState('admin');
+  const [password, setPassword] = useState('1234'); // This is for the INPUT FIELD
+  const [authError, setAuthError] = useState('');
+  
+  // --- PASSWORD FIX: This ref acts as our "database" ---
+  const correctPasswordRef = useRef('1234');
+  
+  // Processing State
+  const [step, setStep] = useState(1);
   const [files, setFiles] = useState([]);
   const [uploadedFilePaths, setUploadedFilePaths] = useState([]);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState('');
   
-  // Metric extraction state
+  // Metric Extraction State
   const [userPrompt, setUserPrompt] = useState('');
   const [suggestedMetrics, setSuggestedMetrics] = useState([]);
   const [selectedMetrics, setSelectedMetrics] = useState([]);
   const [editingMetric, setEditingMetric] = useState(null);
   
-  // Results
+  // Results/Pipeline State
   const [results, setResults] = useState(null);
   const [currentStage, setCurrentStage] = useState('');
   const [progress, setProgress] = useState(0);
   
-  // UI state
+  // --- DYNAMIC DASHBOARD STATS ---
+  const [totalProcessedCount, setTotalProcessedCount] = useState(0); 
+  const [dashboardStats, setDashboardStats] = useState({
+    successRate: 0,
+    avgProcessTime: 'N/A',
+    activeUsers: 0
+  });
+  
+  // Logs State
   const [logs, setLogs] = useState([]);
-  const [showLogs, setShowLogs] = useState(false);
   const fileInputRef = useRef(null);
   const logsEndRef = useRef(null);
+  const [isDragging, setIsDragging] = useState(false);
 
-  const addLog = (message, type = 'info') => {
+  // Settings State
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
+
+  // --- NOTIFICATION STATE ---
+  const [notifications, setNotifications] = useState([
+    { id: 1, text: 'Welcome to SnowFlow AI!' },
+    { id: 2, text: 'Your backend endpoint is set to localhost:8000.' },
+  ]);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const notificationRef = useRef(null);
+
+  // --- Utilities ---
+
+  const addLog = async (message, type = 'info') => {
     const timestamp = new Date().toLocaleTimeString();
-    setLogs(prev => [...prev, { timestamp, message, type }]);
+    const newLog = { timestamp, message, type, id: Date.now() };
+    setLogs(prev => [...prev, newLog]);
+    try {
+      await fetch(`${API_BASE}/logs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, type, timestamp })
+      });
+    } catch (err) {
+      console.error('Failed to send log to backend:', err);
+    }
   };
 
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [logs]);
 
+  const fetchLogs = async () => {
+    addLog('Fetching system logs...', 'info');
+    try {
+      const response = await fetch(`${API_BASE}/logs`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch logs: ${response.statusText}`);
+      }
+      const data = await response.json(); 
+      setLogs(prev => [...data.logs, ...prev.filter(p => !data.logs.find(l => l.id === p.id))]);
+    } catch (err) {
+      addLog(`Failed to fetch logs: ${err.message}. Using welcome logs.`, 'error');
+    }
+  };
+
+  useEffect(() => {
+    if (currentView === 'logs') {
+      fetchLogs();
+    }
+  }, [currentView]);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (notificationRef.current && !notificationRef.current.contains(event.target)) {
+        if (!event.target.closest('#notification-button')) {
+          setShowNotifications(false);
+        }
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [notificationRef]);
+
+  // --- Auth Handlers ---
+
+  const handleLogin = (e) => {
+    e.preventDefault();
+    setAuthError('');
+    
+    // --- PASSWORD FIX: Check against the ref, not a hardcoded string ---
+    if (username === 'admin' && password === correctPasswordRef.current) {
+      setIsAuthenticated(true);
+      setShowLogin(false);
+      addLog(`User ${username} logged in successfully`, 'success');
+    } else {
+      setAuthError('Invalid credentials');
+    }
+  };
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    setShowLogin(true);
+    setUsername('admin');
+    // --- PASSWORD FIX: Reset input field to the CURRENT correct password ---
+    setPassword(correctPasswordRef.current);
+    addLog('User logged out', 'info');
+  };
+
+  // --- File Paste & Drag/Drop Handlers ---
+
+  useEffect(() => {
+    const handlePaste = (e) => {
+      if (step !== 1) return;
+      const items = e.clipboardData.files;
+      if (items.length > 0) {
+        const pastedFiles = Array.from(items).filter(file => 
+          ['application/pdf', 'image/png', 'image/jpeg'].includes(file.type)
+        );
+        if (pastedFiles.length > 0) {
+          setFiles(prev => [...prev, ...pastedFiles]);
+          addLog(`Pasted ${pastedFiles.length} file(s)`, 'info');
+        }
+      }
+    };
+    document.addEventListener('paste', handlePaste);
+    return () => document.removeEventListener('paste', handlePaste);
+  }, [step]);
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (step === 1) setIsDragging(true);
+  };
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (step !== 1) return;
+    setIsDragging(false);
+    const droppedFiles = Array.from(e.dataTransfer.files).filter(file =>
+      ['application/pdf', 'image/png', 'image/jpeg'].includes(file.type)
+    );
+    if (droppedFiles.length > 0) {
+      setFiles(prev => [...prev, ...droppedFiles]);
+      addLog(`Dropped ${droppedFiles.length} file(s)`, 'info');
+    }
+  };
+
+
+  // --- Step 1: Upload Handlers ---
+
   const handleFileSelect = (e) => {
     const selectedFiles = Array.from(e.target.files);
-    setFiles(selectedFiles);
+    setFiles(prev => [...prev, ...selectedFiles]);
     setError('');
     setResults(null);
     setStep(1);
-    addLog(`📁 Selected ${selectedFiles.length} file(s): ${selectedFiles.map(f => f.name).join(', ')}`, 'info');
+    addLog(`📁 Selected ${selectedFiles.length} file(s)`, 'info');
   };
 
   const uploadFiles = async () => {
     const formData = new FormData();
     files.forEach(file => formData.append('files', file));
-
     addLog('📤 Uploading files to server...', 'info');
     
     const response = await fetch(`${API_BASE}/upload`, {
@@ -80,7 +269,6 @@ function App() {
       setError('Please select at least one file');
       return;
     }
-
     try {
       setProcessing(true);
       setError('');
@@ -95,18 +283,18 @@ function App() {
     }
   };
 
+  // --- Step 2: Suggest Handlers ---
+
   const handleStep2 = async () => {
     if (uploadedFilePaths.length === 0) {
       setError('Please upload files first');
       return;
     }
-
     try {
       setProcessing(true);
       setError('');
-      addLog('💡 Requesting metric suggestions...', 'info');
-      
-      // Call process endpoint with user prompt to get suggestions
+      addLog('💡 Requesting metric suggestions (Gemini)...', 'info');
+
       const response = await fetch(`${API_BASE}/process`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -134,44 +322,78 @@ function App() {
       }
     } catch (err) {
       setError(err.message);
-      addLog(`❌ Error: ${err.message}`, 'error');
+      addLog(`❌ Suggestion error: ${err.message}`, 'error');
     } finally {
       setProcessing(false);
     }
   };
+
+  // --- Step 3: Review & Custom Metric Handlers ---
+
+  const toggleMetricSelection = (index) => {
+    const metric = suggestedMetrics[index];
+    const isSelected = selectedMetrics.some(m => m.name === metric.name);
+    if (isSelected) {
+      setSelectedMetrics(prev => prev.filter(m => m.name !== metric.name));
+    } else {
+      setSelectedMetrics(prev => [...prev, metric]);
+    }
+  };
+
+  const addMetric = () => {
+    setEditingMetric({ name: '', type: 'str', description: '' });
+  };
+
+  const saveMetric = () => {
+    if (!editingMetric.name) {
+      setError('Metric name is required');
+      return;
+    }
+    if (editingMetric.id !== undefined) {
+      setSelectedMetrics(prev => prev.map((m, i) => i === editingMetric.id ? editingMetric : m));
+    } else {
+      setSelectedMetrics(prev => [...prev, editingMetric]);
+    }
+    setEditingMetric(null);
+    setError('');
+  };
+
+  const deleteMetric = (index) => {
+    setSelectedMetrics(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // --- Step 4: Process Handlers ---
 
   const handleStep3 = async () => {
     if (selectedMetrics.length === 0) {
       setError('Please select at least one metric to extract');
       return;
     }
-
     try {
       setProcessing(true);
+      setDashboardStats(prev => ({...prev, activeUsers: 1}));
       setError('');
-      setCurrentStage('Processing Pipeline');
-      setProgress(0);
+      setStep(4);
       addLog('🔄 Starting processing pipeline...', 'info');
-      
-      // Step 1: Extract markdown (already done, but we need markdown paths)
+
       setCurrentStage('Step 1: Extracting Markdown');
       setProgress(10);
-      addLog('📄 Extracting markdown...', 'info');
+      addLog('📄 Extracting markdown (LandingAI)...', 'info');
+      await new Promise(resolve => setTimeout(resolve, 500)); 
       
-      // Step 2: Metrics already suggested
       setCurrentStage('Step 2: Metrics Suggested');
       setProgress(20);
+      await new Promise(resolve => setTimeout(resolve, 200)); 
       
-      // Step 3: Review complete (user selected metrics)
       setCurrentStage('Step 3: Review Complete');
       setProgress(30);
+      await new Promise(resolve => setTimeout(resolve, 200)); 
       
-      // Step 4: Extract metrics and create schema
       setCurrentStage('Step 4: Extracting Metrics');
       setProgress(40);
-      addLog('🔍 Extracting metrics...', 'info');
+      addLog('🔍 Extracting metrics (Gemini)...', 'info');
+      await new Promise(resolve => setTimeout(resolve, 500)); 
       
-      // Step 5: Deploy to Snowflake
       setCurrentStage('Step 5: Deploying to Snowflake');
       setProgress(60);
       addLog('❄️ Deploying to Snowflake...', 'info');
@@ -197,19 +419,29 @@ function App() {
       setResults(result);
       setStep(5);
       
+      setTotalProcessedCount(prevCount => prevCount + files.length); 
+      setDashboardStats(prev => ({
+        ...prev,
+        successRate: 98.5, 
+        avgProcessTime: '2.3s', 
+      }));
+      
       addLog('✅ Processing complete!', 'success');
       addLog(`✅ Created ${result.schema?.tables?.length || 0} tables`, 'success');
       addLog(`✅ Loaded ${result.deployment?.rows_loaded || 0} rows`, 'success');
-      
+
     } catch (err) {
       setError(err.message);
       setCurrentStage('Error');
       setProgress(0);
-      addLog(`❌ Error: ${err.message}`, 'error');
+      addLog(`❌ Pipeline error: ${err.message}`, 'error');
     } finally {
       setProcessing(false);
+      setDashboardStats(prev => ({...prev, activeUsers: 0}));
     }
   };
+
+  // --- Step 5: Reset Handler ---
 
   const resetForm = () => {
     setFiles([]);
@@ -226,592 +458,901 @@ function App() {
     addLog('🔄 Ready for new documents', 'info');
   };
 
-  const addMetric = () => {
-    setEditingMetric({
-      name: '',
-      type: 'str',
-      description: ''
-    });
-  };
+  // --- Settings: Change Password (FIXED) ---
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    setPasswordError('');
+    setPasswordSuccess('');
 
-  const saveMetric = () => {
-    if (!editingMetric.name) {
-      setError('Metric name is required');
+    if (newPassword !== confirmPassword) {
+      setPasswordError('New passwords do not match');
       return;
     }
-    if (editingMetric.id !== undefined) {
-      setSelectedMetrics(prev => prev.map((m, i) => i === editingMetric.id ? editingMetric : m));
-    } else {
-      setSelectedMetrics(prev => [...prev, editingMetric]);
+    if (newPassword.length < 4) {
+      setPasswordError('New password must be at least 4 characters');
+      return;
     }
-    setEditingMetric(null);
-    setError('');
+    
+    addLog('Attempting to change password...', 'info');
+    try {
+      // --- MOCK BACKEND CALL (FIXED) ---
+      // This simulates checking the password
+      await new Promise((resolve, reject) => {
+        setTimeout(() => {
+          // --- PASSWORD FIX: Check against the ref ---
+          if (currentPassword !== correctPasswordRef.current) {
+            reject(new Error('Current password is incorrect'));
+          } else {
+            resolve({ success: true });
+          }
+        }, 1000);
+      });
+
+      // --- PASSWORD FIX: Update the ref with the new password ---
+      correctPasswordRef.current = newPassword; 
+
+      setPasswordSuccess('Password changed successfully!');
+      addLog('Password changed successfully', 'success');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+
+    } catch (err) {
+      setPasswordError(err.message);
+      addLog(`Password change failed: ${err.message}`, 'error');
+    }
   };
 
-  const deleteMetric = (index) => {
-    setSelectedMetrics(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const toggleMetricSelection = (index) => {
-    const metric = suggestedMetrics[index];
-    const isSelected = selectedMetrics.some(m => m.name === metric.name);
-    if (isSelected) {
-      setSelectedMetrics(prev => prev.filter(m => m.name !== metric.name));
-    } else {
-      setSelectedMetrics(prev => [...prev, metric]);
-    }
-  };
+  // --- SNOWFLOW THEME ---
 
   const bgClass = darkMode 
-    ? 'bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900' 
-    : 'bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50';
+    ? 'bg-gradient-to-br from-gray-900 via-blue-950 to-gray-900' 
+    : 'bg-gradient-to-br from-slate-50 to-blue-100';
   
   const cardClass = darkMode
-    ? 'bg-gray-800 bg-opacity-50 backdrop-blur-lg border border-gray-700'
-    : 'bg-white bg-opacity-70 backdrop-blur-lg border border-gray-200';
+    ? 'bg-slate-900/50 backdrop-blur-lg border border-blue-900/50'
+    : 'bg-white/70 backdrop-blur-lg border border-gray-200 shadow-sm';
   
-  const textClass = darkMode ? 'text-white' : 'text-gray-900';
-  const textMutedClass = darkMode ? 'text-gray-300' : 'text-gray-600';
+  const textClass = darkMode ? 'text-white' : 'text-slate-900';
+  const textMutedClass = darkMode ? 'text-slate-400' : 'text-slate-600';
+  
+  const accentGradient = 'bg-gradient-to-r from-blue-500 to-cyan-400';
+  const accentHover = 'hover:from-blue-600 hover:to-cyan-500';
+  const accentText = darkMode ? 'text-cyan-300' : 'text-cyan-700';
+  const accentRing = 'focus:ring-cyan-500';
 
-  return (
-    <div className={`min-h-screen ${bgClass} transition-colors duration-300`}>
-      {/* Header */}
-      <header className={`${darkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200'} bg-opacity-50 backdrop-blur-md border-b`}>
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="bg-gradient-to-br from-blue-500 to-purple-600 p-2 rounded-xl">
-                <TrendingUp className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h1 className={`text-2xl font-bold ${textClass}`}>FinanceFlow AI</h1>
-                <p className={`text-sm ${textMutedClass}`}>LandingAI + Gemini + Snowflake</p>
+  // --- Login View ---
+  if (showLogin) {
+    return (
+      <div className={`min-h-screen ${bgClass} flex items-center justify-center p-4 relative overflow-hidden`}>
+        {darkMode && <Snowfall />}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
+          <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-cyan-600/10 rounded-full blur-3xl animate-pulse"></div>
+          <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-400/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
+        </div>
+
+        <div className={`${cardClass} rounded-3xl shadow-2xl p-8 md:p-12 max-w-md w-full relative z-10`}>
+          <div className="text-center mb-8">
+            <div className={`p-4 rounded-2xl inline-block mb-4 animate-bounce ${accentGradient}`}>
+              <TrendingUp className="w-12 h-12 text-white" />
+            </div>
+            <h1 className={`text-3xl font-bold ${textClass} mb-2`}>SnowFlow AI</h1>
+            <p className={textMutedClass}>Intelligent Document Processing</p>
+          </div>
+
+          <form onSubmit={handleLogin} className="space-y-6">
+            <div>
+              <label className={`block ${textClass} font-medium mb-2 flex items-center gap-2`}>
+                <Mail className="w-4 h-4" />
+                Username
+              </label>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className={`w-full px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700/50 text-white border-slate-600' : 'bg-white text-slate-900 border-slate-300'} border focus:outline-none focus:ring-2 ${accentRing} transition-all`}
+                placeholder="Enter your username"
+              />
+            </div>
+
+            <div>
+              <label className={`block ${textClass} font-medium mb-2 flex items-center gap-2`}>
+                <Lock className="w-4 h-4" />
+                Password
+              </label>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className={`w-full px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700/50 text-white border-slate-600' : 'bg-white text-slate-900 border-slate-300'} border focus:outline-none focus:ring-2 ${accentRing} transition-all pr-12`}
+                  placeholder="Enter your password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2"
+                >
+                  {showPassword ? <EyeOff className="w-5 h-5 text-slate-400" /> : <Eye className="w-5 h-5 text-slate-400" />}
+                </button>
               </div>
             </div>
-            <div className="flex items-center gap-3">
+
+            {authError && (
+              <div className="flex items-center gap-2 p-3 bg-red-500/20 border border-red-500/50 rounded-xl">
+                <AlertCircle className="w-5 h-5 text-red-400" />
+                <p className="text-red-300 text-sm">{authError}</p>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              className={`w-full py-4 ${accentGradient} ${accentHover} text-white font-bold rounded-xl transition-all transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center justify-center gap-2`}
+            >
+              <Lock className="w-5 h-5" />
+              Sign In
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+
+  // --- Main App Layout ---
+  return (
+    <div 
+      className={`min-h-screen ${bgClass} transition-all duration-300 ${textClass} relative z-0`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {darkMode && <Snowfall />}
+
+      {/* Header */}
+      <header className={`${darkMode ? 'bg-slate-900/50 border-slate-800' : 'bg-white/80 border-slate-200'} backdrop-blur-xl border-b sticky top-0 z-40`}>
+        <div className="px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
               <button
-                onClick={() => setShowLogs(!showLogs)}
-                className={`px-4 py-2 ${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-200 hover:bg-gray-300'} rounded-lg flex items-center gap-2 transition-colors`}
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                className={`p-2 ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'} rounded-lg transition-colors lg:hidden`}
               >
-                <Terminal className="w-4 h-4" />
-                <span className="text-sm font-medium">Logs</span>
-                {logs.length > 0 && (
-                  <span className="bg-blue-500 text-white text-xs px-2 py-0.5 rounded-full">{logs.length}</span>
+                <Menu className="w-6 h-6" />
+              </button>
+              <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-xl ${accentGradient}`}>
+                  <TrendingUp className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h1 className={`text-xl font-bold ${textClass}`}>SnowFlow AI</h1>
+                  <p className={`text-xs ${textMutedClass}`}>Document Intelligence</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-3 relative">
+              <button 
+                id="notification-button"
+                onClick={() => setShowNotifications(!showNotifications)} 
+                className={`relative p-2 ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'} rounded-lg transition-colors`}
+              >
+                <Bell className="w-5 h-5" />
+                {notifications.length > 0 && (
+                  <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-current"></span>
                 )}
               </button>
+
+              {/* --- NEW NOTIFICATION PANEL --- */}
+              {showNotifications && (
+                <div 
+                  ref={notificationRef}
+                  className={`${cardClass} absolute top-12 right-0 w-80 rounded-lg shadow-2xl z-50 overflow-hidden animate-fade-in-down`}
+                >
+                  <div className="p-3 flex items-center justify-between border-b border-slate-700/50">
+                    <h4 className="font-semibold">Notifications</h4>
+                    {notifications.length > 0 && (
+                      <button 
+                        onClick={() => setNotifications([])}
+                        className={`text-xs ${accentText} hover:underline`}
+                      >
+                        Clear All
+                      </button>
+                    )}
+                  </div>
+                  <div className="p-2 max-h-64 overflow-y-auto">
+                    {notifications.length === 0 ? (
+                      <p className={`text-sm text-center p-4 ${textMutedClass}`}>No new notifications</p>
+                    ) : (
+                      notifications.map(notif => (
+                        <div key={notif.id} className={`text-sm p-3 rounded-lg ${darkMode ? 'hover:bg-slate-800' : 'hover:bg-slate-100'}`}>
+                          {notif.text}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+              {/* --- END NOTIFICATION PANEL --- */}
+
               <button
                 onClick={() => setDarkMode(!darkMode)}
-                className={`p-2 ${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-200 hover:bg-gray-300'} rounded-lg transition-colors`}
+                className={`p-2 ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'} rounded-lg transition-colors`}
               >
-                {darkMode ? <Sun className="w-5 h-5 text-yellow-400" /> : <Moon className="w-5 h-5 text-blue-600" />}
+                {darkMode ? <Sun className="w-5 h-5 text-yellow-400" /> : <Moon className="w-5 h-5 text-slate-600" />}
+              </button>
+              <div className={`flex items-center gap-2 px-3 py-2 rounded-lg ${darkMode ? 'bg-cyan-900/30' : 'bg-cyan-500/10'}`}>
+                <User className={`w-4 h-4 ${accentText}`} />
+                <span className={`text-sm font-medium ${accentText}`}>{username}</span>
+              </div>
+              <button
+                onClick={handleLogout}
+                className="p-2 hover:bg-red-500/20 rounded-lg transition-colors text-red-400"
+              >
+                <LogOut className="w-5 h-5" />
               </button>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Logs Panel */}
-      {showLogs && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className={`${darkMode ? 'bg-gray-900' : 'bg-white'} rounded-2xl shadow-2xl max-w-4xl w-full max-h-[80vh] flex flex-col`}>
-            <div className={`flex items-center justify-between p-6 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-              <div className="flex items-center gap-3">
-                <Terminal className="w-6 h-6 text-blue-400" />
-                <h2 className={`text-2xl font-bold ${textClass}`}>System Logs</h2>
-              </div>
-              <button 
-                onClick={() => setShowLogs(false)} 
-                className={`p-2 hover:bg-gray-700 rounded-lg transition-colors ${textClass}`}
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-            <div className={`flex-1 overflow-y-auto p-6 ${darkMode ? 'bg-gray-950' : 'bg-gray-50'} font-mono text-sm`}>
-              {logs.length === 0 ? (
-                <p className="text-gray-500">No logs yet...</p>
-              ) : (
-                logs.map((log, idx) => (
-                  <div key={idx} className={`mb-2 ${
-                    log.type === 'error' ? 'text-red-400' :
-                    log.type === 'success' ? 'text-green-400' :
-                    darkMode ? 'text-gray-400' : 'text-gray-700'
-                  }`}>
-                    <span className="text-gray-600">[{log.timestamp}]</span> {log.message}
-                  </div>
-                ))
-              )}
-              <div ref={logsEndRef} />
-            </div>
-          </div>
-        </div>
-      )}
-
-      <main className="max-w-7xl mx-auto px-6 py-12">
-        {/* Hero Section */}
-        <div className="text-center mb-12">
-          <h2 className={`text-5xl font-bold ${textClass} mb-4`}>
-            Financial Document Intelligence
-          </h2>
-          <p className={`text-xl ${textMutedClass} max-w-3xl mx-auto`}>
-            AI-powered extraction, metric suggestion, and Snowflake deployment
-          </p>
-        </div>
-
-        {/* Step Indicator */}
-        <div className={`${cardClass} rounded-2xl shadow-xl p-6 mb-8`}>
-          <div className="flex items-center justify-between">
-            {[1, 2, 3, 4, 5].map((s) => (
-              <React.Fragment key={s}>
-                <div className="flex flex-col items-center flex-1">
-                  <div
-                    className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg transition-all ${
-                      step >= s
-                        ? 'bg-blue-600 text-white'
-                        : `${darkMode ? 'bg-gray-700 text-gray-400' : 'bg-gray-200 text-gray-500'}`
-                    }`}
-                  >
-                    {step > s ? <CheckCircle className="w-6 h-6" /> : s}
-                  </div>
-                  <p className={`mt-2 text-sm font-medium ${
-                    step >= s ? textClass : textMutedClass
-                  }`}>
-                    {s === 1 && 'Upload'}
-                    {s === 2 && 'Suggest'}
-                    {s === 3 && 'Review'}
-                    {s === 4 && 'Process'}
-                    {s === 5 && 'Results'}
-                  </p>
-                </div>
-                {s < 5 && (
-                  <div className={`flex-1 h-1 mx-2 ${
-                    step > s
-                      ? 'bg-blue-600'
-                      : `${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`
-                  }`} />
-                )}
-              </React.Fragment>
-            ))}
-          </div>
-        </div>
-
-        {/* Step 1: Upload */}
-        {step === 1 && (
-          <div className={`${cardClass} rounded-2xl shadow-2xl p-8`}>
-            <div className="text-center mb-8">
-              <Upload className={`w-16 h-16 ${darkMode ? 'text-blue-400' : 'text-blue-600'} mx-auto mb-4`} />
-              <h3 className={`text-2xl font-semibold ${textClass} mb-2`}>Upload Document</h3>
-              <p className={textMutedClass}>Upload a financial document to begin processing</p>
-            </div>
-
-            <div className="mb-6">
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                onChange={handleFileSelect}
-                accept=".pdf,.png,.jpg,.jpeg"
-                className="hidden"
-                id="file-upload"
-              />
-              <label
-                htmlFor="file-upload"
-                className="flex items-center justify-center gap-3 px-6 py-4 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white rounded-xl cursor-pointer transition-all transform hover:scale-105 shadow-lg"
-              >
-                <FileText className="w-5 h-5" />
-                <span className="font-semibold">Choose Files</span>
-              </label>
-            </div>
-
-            {files.length > 0 && (
-              <div className="mb-6">
-                <div className="space-y-2">
-                  {files.map((file, idx) => (
-                    <div key={idx} className={`flex items-center gap-3 ${darkMode ? 'bg-gray-700' : 'bg-gray-100'} p-3 rounded-lg`}>
-                      <FileText className={`w-5 h-5 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />
-                      <span className={`${textClass} flex-1`}>{file.name}</span>
-                      <span className={`${textMutedClass} text-sm`}>{(file.size / 1024).toFixed(1)} KB</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {error && (
-              <div className="mb-6 flex items-center gap-3 p-4 bg-red-500 bg-opacity-20 border border-red-500 rounded-lg">
-                <AlertCircle className="w-5 h-5 text-red-300" />
-                <p className="text-red-200">{error}</p>
-              </div>
-            )}
-
+      <div className="flex">
+        {/* Sidebar */}
+        <aside className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 fixed lg:sticky top-[73px] left-0 h-[calc(100vh-73px)] w-64 ${darkMode ? 'bg-slate-900/50' : 'bg-white/80'} backdrop-blur-xl border-r ${darkMode ? 'border-slate-800' : 'border-slate-200'} transition-transform duration-300 z-30`}>
+          <nav className="p-4 space-y-2">
             <button
-              onClick={handleStep1}
-              disabled={files.length === 0 || processing}
-              className="w-full py-4 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 disabled:from-gray-600 disabled:to-gray-700 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-all shadow-lg flex items-center justify-center gap-3"
+              onClick={() => setCurrentView('home')}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+                currentView === 'home' 
+                  ? `${accentGradient} text-white shadow-lg` 
+                  : `${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'} ${textClass}`
+              }`}
             >
-              {processing ? (
-                <>
-                  <Loader className="w-5 h-5 animate-spin" />
-                  <span>Uploading...</span>
-                </>
-              ) : (
-                <>
-                  <ArrowRight className="w-5 h-5" />
-                  <span>Upload & Extract Markdown</span>
-                </>
+              <Home className="w-5 h-5" />
+              <span className="font-medium">Dashboard & Process</span>
+            </button>
+            
+            <button
+              onClick={() => setCurrentView('logs')}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+                currentView === 'logs' 
+                  ? `${accentGradient} text-white shadow-lg` 
+                  : `${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'} ${textClass}`
+              }`}
+            >
+              <Terminal className="w-5 h-5" />
+              <span className="font-medium">Activity Logs</span>
+              {logs.length > 0 && (
+                <span className="ml-auto bg-cyan-500 text-white text-xs px-2 py-0.5 rounded-full">{logs.length}</span>
               )}
             </button>
-          </div>
-        )}
+            
+            <button
+              onClick={() => setCurrentView('settings')}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+                currentView === 'settings' 
+                  ? `${accentGradient} text-white shadow-lg` 
+                  : `${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'} ${textClass}`
+              }`}
+            >
+              <Settings className="w-5 h-5" />
+              <span className="font-medium">Settings</span>
+            </button>
+          </nav>
 
-        {/* Step 2: Suggest Metrics */}
-        {step === 2 && (
-          <div className={`${cardClass} rounded-2xl shadow-2xl p-8`}>
-            <div className="text-center mb-8">
-              <Sparkles className={`w-16 h-16 ${darkMode ? 'text-purple-400' : 'text-purple-600'} mx-auto mb-4`} />
-              <h3 className={`text-2xl font-semibold ${textClass} mb-2`}>Suggest Metrics</h3>
-              <p className={textMutedClass}>Let AI suggest metrics or provide your own requirements</p>
-            </div>
-
-            <div className="mb-6">
-              <label className={`block ${textClass} font-medium mb-2`}>
-                Optional: Describe what metrics you want to extract
-              </label>
-              <textarea
-                value={userPrompt}
-                onChange={(e) => setUserPrompt(e.target.value)}
-                placeholder="e.g., I want to extract account holder name and number of deposits"
-                className={`w-full px-4 py-3 rounded-lg ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-900 border-gray-300'} border focus:outline-none focus:ring-2 focus:ring-blue-500`}
-                rows={3}
-              />
-            </div>
-
-            {error && (
-              <div className="mb-6 flex items-center gap-3 p-4 bg-red-500 bg-opacity-20 border border-red-500 rounded-lg">
-                <AlertCircle className="w-5 h-5 text-red-300" />
-                <p className="text-red-200">{error}</p>
-              </div>
-            )}
-
-            <div className="flex gap-4">
-              <button
-                onClick={() => setStep(1)}
-                className="flex-1 py-4 bg-gray-600 hover:bg-gray-700 text-white font-bold rounded-xl transition-all shadow-lg flex items-center justify-center gap-3"
-              >
-                <ArrowLeft className="w-5 h-5" />
-                <span>Back</span>
-              </button>
-              <button
-                onClick={handleStep2}
-                disabled={processing}
-                className="flex-1 py-4 bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 disabled:from-gray-600 disabled:to-gray-700 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-all shadow-lg flex items-center justify-center gap-3"
-              >
-                {processing ? (
-                  <>
-                    <Loader className="w-5 h-5 animate-spin" />
-                    <span>Suggesting...</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-5 h-5" />
-                    <span>Suggest Metrics</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Step 3: Review and Select Metrics */}
-        {step === 3 && (
-          <div className={`${cardClass} rounded-2xl shadow-2xl p-8`}>
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h3 className={`text-2xl font-semibold ${textClass} mb-2`}>Review Metrics</h3>
-                <p className={textMutedClass}>Select or edit metrics to extract</p>
-              </div>
-              <button
-                onClick={addMetric}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center gap-2 transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                Add Metric
-              </button>
-            </div>
-
-            {/* Suggested Metrics */}
-            {suggestedMetrics.length > 0 && (
-              <div className="mb-6">
-                <h4 className={`${textClass} font-semibold mb-3`}>Suggested Metrics:</h4>
-                <div className="space-y-2">
-                  {suggestedMetrics.map((metric, idx) => {
-                    const isSelected = selectedMetrics.some(m => m.name === metric.name);
-                    return (
-                      <div
-                        key={idx}
-                        onClick={() => toggleMetricSelection(idx)}
-                        className={`flex items-center gap-3 p-4 rounded-lg cursor-pointer transition-all ${
-                          isSelected
-                            ? `${darkMode ? 'bg-blue-900 border-2 border-blue-500' : 'bg-blue-50 border-2 border-blue-500'}`
-                            : `${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'} border-2 border-transparent`
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => toggleMetricSelection(idx)}
-                          className="w-5 h-5"
-                        />
-                        <div className="flex-1">
-                          <p className={`font-semibold ${textClass}`}>{metric.name}</p>
-                          <p className={`text-sm ${textMutedClass}`}>{metric.description}</p>
-                          <span className={`text-xs px-2 py-1 rounded ${darkMode ? 'bg-gray-600' : 'bg-gray-200'} ${textMutedClass}`}>
-                            {metric.type}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
+          <div className="p-4">
+            <div className={`${cardClass} rounded-xl p-4 space-y-3 transition-transform duration-300 hover:scale-105`}>
+              <h3 className={`text-sm font-semibold ${textClass} mb-3`}>Quick Stats</h3>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className={`text-xs ${textMutedClass}`}>Processed</span>
+                  <span className={`text-sm font-bold ${textClass}`}>{totalProcessedCount}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className={`text-xs ${textMutedClass}`}>Success Rate</span>
+                  <span className={`text-sm font-bold ${dashboardStats.successRate > 0 ? 'text-green-400' : textClass}`}>
+                    {dashboardStats.successRate > 0 ? `${dashboardStats.successRate}%` : 'N/A'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className={`text-xs ${textMutedClass}`}>Avg Time</span>
+                  <span className={`text-sm font-bold ${textClass}`}>{dashboardStats.avgProcessTime}</span>
+                </div>
+                 <div className="flex items-center justify-between">
+                  <span className={`text-xs ${textMutedClass}`}>Active</span>
+                  <span className={`text-sm font-bold ${dashboardStats.activeUsers > 0 ? 'text-cyan-400' : textClass}`}>
+                    {dashboardStats.activeUsers}
+                  </span>
                 </div>
               </div>
-            )}
+            </div>
+          </div>
+        </aside>
 
-            {/* Selected Metrics */}
-            <div className="mb-6">
-              <h4 className={`${textClass} font-semibold mb-3`}>
-                Selected Metrics ({selectedMetrics.length}):
-              </h4>
-              <div className="space-y-2">
-                {selectedMetrics.map((metric, idx) => (
-                  <div
-                    key={idx}
-                    className={`flex items-center gap-3 p-4 rounded-lg ${
-                      darkMode ? 'bg-gray-700' : 'bg-gray-100'
-                    }`}
-                  >
-                    <div className="flex-1">
-                      <p className={`font-semibold ${textClass}`}>{metric.name}</p>
-                      <p className={`text-sm ${textMutedClass}`}>{metric.description}</p>
-                      <span className={`text-xs px-2 py-1 rounded ${darkMode ? 'bg-gray-600' : 'bg-gray-200'} ${textMutedClass}`}>
-                        {metric.type}
-                      </span>
+        {/* Main Content */}
+        <main className="flex-1 p-6 lg:p-8">
+
+          {/* Step Indicator (Shared across Home View) */}
+          {currentView === 'home' && (
+            <div className={`${cardClass} rounded-2xl shadow-xl p-6 mb-8`}>
+              <div className="flex items-center justify-between">
+                {[1, 2, 3, 4, 5].map((s) => (
+                  <React.Fragment key={s}>
+                    <div className="flex flex-col items-center flex-1">
+                      <div
+                        className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg transition-all ${
+                          step === s ? `${accentGradient} text-white animate-pulse` :
+                          step > s
+                            ? 'bg-teal-600 text-white'
+                            : `${darkMode ? 'bg-slate-700 text-slate-400' : 'bg-slate-200 text-slate-500'}`
+                        }`}
+                      >
+                        {step > s ? <CheckCircle className="w-6 h-6" /> : s}
+                      </div>
+                      <p className={`mt-2 text-sm font-medium text-center ${
+                        step >= s ? textClass : textMutedClass
+                      }`}>
+                        {s === 1 && 'Upload Docs'}
+                        {s === 2 && 'Prompt AI'}
+                        {s === 3 && 'Review Metrics'}
+                        {s === 4 && 'Process'}
+                        {s === 5 && 'Results'}
+                      </p>
                     </div>
-                    <button
-                      onClick={() => {
-                        setEditingMetric({ ...metric, id: idx });
-                      }}
-                      className="p-2 hover:bg-gray-600 rounded-lg transition-colors"
-                    >
-                      <Edit className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => deleteMetric(idx)}
-                      className="p-2 hover:bg-red-600 rounded-lg transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4 text-red-400" />
-                    </button>
-                  </div>
+                    {s < 5 && (
+                      <div className={`flex-1 h-1 mx-2 ${
+                        step > s
+                          ? 'bg-teal-600'
+                          : `${darkMode ? 'bg-slate-700' : 'bg-slate-200'}`
+                      }`} />
+                    )}
+                  </React.Fragment>
                 ))}
               </div>
             </div>
+          )}
 
-            {/* Edit Metric Modal */}
-            {editingMetric && (
-              <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-                <div className={`${darkMode ? 'bg-gray-900' : 'bg-white'} rounded-2xl shadow-2xl max-w-md w-full p-6`}>
-                  <h4 className={`text-xl font-bold ${textClass} mb-4`}>
-                    {editingMetric.id !== undefined ? 'Edit Metric' : 'Add Metric'}
-                  </h4>
-                  <div className="space-y-4">
-                    <div>
-                      <label className={`block ${textClass} font-medium mb-2`}>Name (snake_case)</label>
-                      <input
-                        type="text"
-                        value={editingMetric.name}
-                        onChange={(e) => setEditingMetric({ ...editingMetric, name: e.target.value })}
-                        className={`w-full px-4 py-2 rounded-lg ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-900 border-gray-300'} border focus:outline-none focus:ring-2 focus:ring-blue-500`}
-                        placeholder="metric_name"
-                      />
-                    </div>
-                    <div>
-                      <label className={`block ${textClass} font-medium mb-2`}>Type</label>
-                      <select
-                        value={editingMetric.type}
-                        onChange={(e) => setEditingMetric({ ...editingMetric, type: e.target.value })}
-                        className={`w-full px-4 py-2 rounded-lg ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-900 border-gray-300'} border focus:outline-none focus:ring-2 focus:ring-blue-500`}
-                      >
-                        <option value="str">String</option>
-                        <option value="int">Integer</option>
-                        <option value="float">Float</option>
-                        <option value="bool">Boolean</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className={`block ${textClass} font-medium mb-2`}>Description</label>
-                      <textarea
-                        value={editingMetric.description}
-                        onChange={(e) => setEditingMetric({ ...editingMetric, description: e.target.value })}
-                        className={`w-full px-4 py-2 rounded-lg ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-900 border-gray-300'} border focus:outline-none focus:ring-2 focus:ring-blue-500`}
-                        rows={3}
-                        placeholder="Description of the metric"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex gap-4 mt-6">
-                    <button
-                      onClick={() => setEditingMetric(null)}
-                      className="flex-1 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={saveMetric}
-                      className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-                    >
-                      Save
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {error && (
-              <div className="mb-6 flex items-center gap-3 p-4 bg-red-500 bg-opacity-20 border border-red-500 rounded-lg">
-                <AlertCircle className="w-5 h-5 text-red-300" />
-                <p className="text-red-200">{error}</p>
-              </div>
-            )}
-
-            <div className="flex gap-4">
-              <button
-                onClick={() => setStep(2)}
-                className="flex-1 py-4 bg-gray-600 hover:bg-gray-700 text-white font-bold rounded-xl transition-all shadow-lg flex items-center justify-center gap-3"
-              >
-                <ArrowLeft className="w-5 h-5" />
-                <span>Back</span>
-              </button>
-              <button
-                onClick={handleStep3}
-                disabled={selectedMetrics.length === 0 || processing}
-                className="flex-1 py-4 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 disabled:from-gray-600 disabled:to-gray-700 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-all shadow-lg flex items-center justify-center gap-3"
-              >
-                {processing ? (
-                  <>
-                    <Loader className="w-5 h-5 animate-spin" />
-                    <span>Processing...</span>
-                  </>
-                ) : (
-                  <>
-                    <Database className="w-5 h-5" />
-                    <span>Extract & Deploy</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Step 4: Processing */}
-        {step === 4 && processing && (
-          <div className={`${cardClass} rounded-2xl shadow-2xl p-8`}>
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className={`text-2xl font-bold ${textClass} mb-2`}>{currentStage}</h3>
-                  <p className={textMutedClass}>Processing your document...</p>
-                </div>
-                <Activity className={`w-12 h-12 ${darkMode ? 'text-blue-400' : 'text-blue-600'} animate-pulse`} />
-              </div>
-              
-              <div className={`w-full ${darkMode ? 'bg-gray-700' : 'bg-gray-200'} rounded-full h-4 overflow-hidden`}>
-                <div 
-                  className="bg-gradient-to-r from-blue-500 to-purple-600 h-full transition-all duration-500"
-                  style={{ width: `${progress}%` }}
-                />
-              </div>
-              
-              <div className="text-center">
-                <span className={`text-3xl font-bold ${textClass}`}>{progress}%</span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Step 5: Results */}
-        {step === 5 && results && (
-          <div className="space-y-6">
-            <div className="bg-green-500 bg-opacity-20 backdrop-blur-lg rounded-2xl shadow-2xl p-6 border border-green-500 border-opacity-30">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <CheckCircle className="w-12 h-12 text-green-400" />
+          {/* View Router */}
+          {currentView === 'logs' && (
+            <FadeIn key="logs-view">
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="text-2xl font-bold text-white mb-1">Processing Complete!</h3>
-                    <p className="text-green-200">Metrics extracted and deployed to Snowflake</p>
+                    <h2 className={`text-3xl font-bold ${textClass}`}>Activity Logs</h2>
+                    <p className={textMutedClass}>Real-time system activity and processing logs</p>
+                  </div>
+                  <button
+                    onClick={() => setLogs([])}
+                    className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg transition-colors"
+                  >
+                    Clear Logs
+                  </button>
+                </div>
+                <div className={`${cardClass} rounded-2xl shadow-xl overflow-hidden`}>
+                  <div className={`${darkMode ? 'bg-slate-900/50' : 'bg-slate-100/50'} p-6 max-h-[70vh] overflow-y-auto font-mono text-sm`}>
+                    {logs.length === 0 ? (
+                      <div className="text-center py-12">
+                        <Terminal className={`w-16 h-16 ${textMutedClass} mx-auto mb-4 opacity-50`} />
+                        <p className={textMutedClass}>No logs yet. Start processing documents to see activity.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {logs.map((log) => (
+                          <div
+                            key={log.id}
+                            className={`p-3 rounded-lg transition-all ${
+                              log.type === 'error' 
+                                ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
+                              log.type === 'success' 
+                                ? 'bg-green-500/10 text-green-400 border border-green-500/20' :
+                              darkMode ? 'bg-slate-800/50 text-slate-300' : 'bg-white text-slate-700'
+                            }`}
+                          >
+                            <div className="flex items-start gap-3">
+                              <Clock className="w-4 h-4 mt-0.5 opacity-50" />
+                              <div className="flex-1">
+                                <span className="opacity-75 text-xs">[{log.timestamp}]</span>
+                                <p className="mt-1">{log.message}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        <div ref={logsEndRef} />
+                      </div>
+                    )}
                   </div>
                 </div>
-                <button
-                  onClick={resetForm}
-                  className="px-6 py-3 bg-white bg-opacity-20 hover:bg-opacity-30 text-white rounded-lg transition-colors"
-                >
-                  Process New Document
-                </button>
               </div>
-            </div>
+            </FadeIn>
+          )}
 
-            {/* Extracted Metrics */}
-            {results.extracted_metrics && (
-              <div className={`${cardClass} rounded-2xl shadow-2xl p-8`}>
-                <h3 className={`text-2xl font-semibold ${textClass} mb-6`}>Extracted Metrics</h3>
-                <div className="space-y-4">
-                  {Object.entries(results.extracted_metrics).map(([key, value]) => (
-                    <div
-                      key={key}
-                      className={`p-4 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}
+          {currentView === 'settings' && (
+            <FadeIn key="settings-view">
+              <div className="space-y-6 max-w-2xl">
+                <div>
+                  <h2 className={`text-3xl font-bold ${textClass}`}>Settings</h2>
+                  <p className={textMutedClass}>Configure your application preferences</p>
+                </div>
+
+                <div className={`${cardClass} rounded-2xl shadow-xl p-8`}>
+                  <h3 className={`text-xl font-semibold ${textClass} mb-4`}>Appearance</h3>
+                  <div className={`flex items-center justify-between p-4 ${darkMode ? 'bg-slate-700/50' : 'bg-slate-100/50'} rounded-xl`}>
+                    <div>
+                      <p className={`font-medium ${textClass}`}>Dark Mode</p>
+                      <p className={`text-sm ${textMutedClass}`}>Toggle dark/light theme</p>
+                    </div>
+                    <button
+                      onClick={() => setDarkMode(!darkMode)}
+                      className={`relative w-14 h-7 rounded-full transition-colors ${darkMode ? 'bg-cyan-500' : 'bg-slate-300'}`}
                     >
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className={`font-semibold ${textClass} capitalize`}>
-                            {key.replace(/_/g, ' ')}
-                          </p>
-                          <p className={`text-2xl font-bold ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
-                            {value !== null && value !== undefined ? String(value) : 'N/A'}
-                          </p>
+                      <div className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full transition-transform ${darkMode ? 'translate-x-7' : 'translate-x-0'}`}></div>
+                    </button>
+                  </div>
+                </div>
+
+                <div className={`${cardClass} rounded-2xl shadow-xl p-8`}>
+                  <h3 className={`text-xl font-semibold ${textClass} mb-4`}>Security</h3>
+                  <form onSubmit={handleChangePassword} className="space-y-4">
+                    <div>
+                      <label className={`block ${textClass} font-medium mb-2`}>Current Password</label>
+                      <input
+                        type="password"
+                        value={currentPassword}
+                        onChange={(e) => setCurrentPassword(e.target.value)}
+                        className={`w-full px-4 py-2 rounded-lg ${darkMode ? 'bg-slate-700 text-white border-slate-600' : 'bg-white text-slate-900 border-slate-300'} border focus:outline-none focus:ring-2 ${accentRing}`}
+                      />
+                    </div>
+                    <div>
+                      <label className={`block ${textClass} font-medium mb-2`}>New Password</label>
+                      <input
+                        type="password"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        className={`w-full px-4 py-2 rounded-lg ${darkMode ? 'bg-slate-700 text-white border-slate-600' : 'bg-white text-slate-900 border-slate-300'} border focus:outline-none focus:ring-2 ${accentRing}`}
+                      />
+                    </div>
+                    <div>
+                      <label className={`block ${textClass} font-medium mb-2`}>Confirm New Password</label>
+                      <input
+                        type="password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        className={`w-full px-4 py-2 rounded-lg ${darkMode ? 'bg-slate-700 text-white border-slate-600' : 'bg-white text-slate-900 border-slate-300'} border focus:outline-none focus:ring-2 ${accentRing}`}
+                      />
+                    </div>
+
+                    {passwordError && (
+                      <div className="flex items-center gap-2 p-3 bg-red-500/20 border border-red-500/50 rounded-xl">
+                        <AlertCircle className="w-5 h-5 text-red-400" />
+                        <p className="text-red-300 text-sm">{passwordError}</p>
+                      </div>
+                    )}
+                    {passwordSuccess && (
+                      <div className="flex items-center gap-2 p-3 bg-green-500/20 border border-green-500/50 rounded-xl">
+                        <CheckCircle className="w-5 h-5 text-green-400" />
+                        <p className="text-green-300 text-sm">{passwordSuccess}</p>
+                      </div>
+                    )}
+
+                    <button
+                      type="submit"
+                      className={`px-6 py-2 ${accentGradient} ${accentHover} text-white font-semibold rounded-lg shadow transition-colors`}
+                    >
+                      Change Password
+                    </button>
+                  </form>
+                </div>
+
+                <div className={`${cardClass} rounded-2xl shadow-xl p-8`}>
+                  <h3 className={`text-xl font-semibold ${textClass} mb-4`}>API Configuration</h3>
+                  <div className={`p-4 ${darkMode ? 'bg-slate-700/50' : 'bg-slate-100/50'} rounded-xl`}>
+                    <p className={`font-medium ${textClass} mb-2`}>API Endpoint</p>
+                    <input
+                      type="text"
+                      value={API_BASE}
+                      readOnly
+                      className={`w-full px-4 py-2 rounded-lg ${darkMode ? 'bg-slate-700 text-white' : 'bg-white text-slate-900'} border ${darkMode ? 'border-slate-600' : 'border-slate-300'}`}
+                    />
+                  </div>
+                </div>
+              </div>
+            </FadeIn>
+          )}
+
+          {currentView === 'home' && (
+            <div className="space-y-6">
+              {/* Dynamic Step Content */}
+              <div className={`${cardClass} rounded-2xl shadow-2xl p-8`}>
+                <h2 className={`text-3xl font-bold ${textClass} mb-6`}>Document Extraction Pipeline</h2>
+                
+                {/* Step 1: Upload */}
+                {step === 1 && (
+                  <FadeIn key="step1">
+                    <div className="space-y-6">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        multiple
+                        onChange={handleFileSelect}
+                        accept=".pdf,.png,.jpg,.jpeg"
+                        className="hidden"
+                        id="file-upload"
+                      />
+                      <label
+                        htmlFor="file-upload"
+                        className={`flex flex-col items-center justify-center gap-3 px-6 py-10 border-2 ${
+                          isDragging 
+                            ? 'border-cyan-500 bg-cyan-500/10' 
+                            : 'border-dashed border-gray-500 hover:border-cyan-500'
+                        } ${textClass} rounded-xl cursor-pointer transition-all`}
+                      >
+                        <Upload className="w-10 h-10" />
+                        <span className="font-semibold text-lg">{isDragging ? 'Drop files here' : 'Click to choose files, or drag & drop'}</span>
+                        <p className={textMutedClass}>You can also paste files from your clipboard</p>
+                      </label>
+
+                      {files.length > 0 && (
+                        <div className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700/50' : 'bg-slate-100/50'}`}>
+                          <p className={`${textClass} font-semibold mb-2`}>Files Selected ({files.length}):</p>
+                          <ul className="space-y-1 max-h-32 overflow-y-auto">
+                            {files.map((file, idx) => (
+                              <li key={`${file.name}-${idx}`} className={`flex justify-between items-center text-sm ${textMutedClass}`}>
+                                <span>{file.name}</span>
+                                <span>{(file.size / 1024).toFixed(1)} KB</span>
+                              </li>
+                            ))}
+                          </ul>
                         </div>
+                      )}
+
+                      {error && (
+                        <div className="flex items-center gap-3 p-4 bg-red-500 bg-opacity-20 border border-red-500 rounded-lg">
+                          <AlertCircle className="w-5 h-5 text-red-300" />
+                          <p className="text-red-300">{error}</p>
+                        </div>
+                      )}
+
+                      <button
+                        onClick={handleStep1}
+                        disabled={files.length === 0 || processing}
+                        className="w-full py-4 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 disabled:from-gray-600 disabled:to-gray-700 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-all shadow-lg flex items-center justify-center gap-3"
+                      >
+                        {processing ? (
+                          <>
+                            <Loader className="w-5 h-5 animate-spin" />
+                            <span>Uploading...</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>Upload & Start AI Suggestion</span>
+                            <ArrowRight className="w-5 h-5" />
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </FadeIn>
+                )}
+
+                {/* Step 2: Suggest Metrics */}
+                {step === 2 && (
+                  <FadeIn key="step2">
+                    <div className="space-y-6">
+                      <div className="text-center">
+                        <Sparkles className={`w-12 h-12 ${accentText} mx-auto mb-2`} />
+                        <h3 className={`text-xl font-semibold ${textClass}`}>Define Extraction Goals</h3>
+                        <p className={textMutedClass}>Provide a prompt for the AI to suggest relevant metrics.</p>
+                      </div>
+                      
+                      <div>
+                        <label className={`block ${textClass} font-medium mb-2`}>Your Prompt (Optional)</label>
+                        <textarea
+                          value={userPrompt}
+                          onChange={(e) => setUserPrompt(e.target.value)}
+                          placeholder="e.g., Extract the account holder name and the total revenue figure."
+                          className={`w-full px-4 py-3 rounded-lg ${darkMode ? 'bg-slate-700 text-white border-slate-600' : 'bg-white text-slate-900 border-slate-300'} border focus:outline-none focus:ring-2 ${accentRing}`}
+                          rows={3}
+                        />
+                      </div>
+
+                      {error && (
+                        <div className="flex items-center gap-3 p-4 bg-red-500 bg-opacity-20 border border-red-500 rounded-lg">
+                          <AlertCircle className="w-5 h-5 text-red-300" />
+                          <p className="text-red-300">{error}</p>
+                        </div>
+                      )}
+
+                      <div className="flex gap-4">
+                        <button
+                          onClick={() => setStep(1)}
+                          className="flex-1 py-4 bg-slate-600 hover:bg-slate-700 text-white font-bold rounded-xl transition-all shadow-lg flex items-center justify-center gap-3"
+                        >
+                          <ArrowLeft className="w-5 h-5" />
+                          <span>Back</span>
+                        </button>
+                        <button
+                          onClick={handleStep2}
+                          disabled={processing}
+                          className={`flex-1 py-4 ${accentGradient} ${accentHover} disabled:from-gray-600 disabled:to-gray-700 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-all shadow-lg flex items-center justify-center gap-3`}
+                        >
+                          {processing ? (
+                            <>
+                              <Loader className="w-5 h-5 animate-spin" />
+                              <span>Suggesting...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles className="w-5 h-5" />
+                              <span>Suggest Metrics</span>
+                            </>
+                          )}
+                        </button>
                       </div>
                     </div>
-                  ))}
-                </div>
-              </div>
-            )}
+                  </FadeIn>
+                )}
 
-            {/* Deployment Info */}
-            <div className={`${cardClass} rounded-2xl shadow-2xl p-8`}>
-              <h3 className={`text-2xl font-semibold ${textClass} mb-6`}>Snowflake Deployment</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-                <div className={`${darkMode ? 'bg-gray-700' : 'bg-gray-100'} p-4 rounded-lg`}>
-                  <p className={textMutedClass}>Tables Created</p>
-                  <p className={`text-3xl font-bold ${textClass}`}>{results.schema?.tables?.length || 0}</p>
-                </div>
-                <div className={`${darkMode ? 'bg-gray-700' : 'bg-gray-100'} p-4 rounded-lg`}>
-                  <p className={textMutedClass}>Rows Loaded</p>
-                  <p className={`text-3xl font-bold ${textClass}`}>{results.deployment?.rows_loaded || 0}</p>
-                </div>
-                <div className={`${darkMode ? 'bg-gray-700' : 'bg-gray-100'} p-4 rounded-lg`}>
-                  <p className={textMutedClass}>Status</p>
-                  <p className={`text-xl font-bold ${textClass}`}>{results.deployment?.status || 'Unknown'}</p>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <p className={textMutedClass}>
-                  <span className="font-semibold">Database:</span> {results.deployment?.database}
-                </p>
-                <p className={textMutedClass}>
-                  <span className="font-semibold">Schema:</span> {results.deployment?.schema}
-                </p>
+                {/* Step 3: Review Metrics */}
+                {step === 3 && (
+                  <FadeIn key="step3">
+                    <div className="space-y-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className={`text-xl font-semibold ${textClass}`}>Review & Customize</h3>
+                          <p className={textMutedClass}>Select, edit, or add metrics before final processing.</p>
+                        </div>
+                        <button
+                          onClick={addMetric}
+                          className={`px-4 py-2 ${accentGradient} ${accentHover} text-white rounded-lg flex items-center gap-2 transition-colors`}
+                        >
+                          <Plus className="w-4 h-4" />
+                          Add Custom
+                        </button>
+                      </div>
+
+                      {suggestedMetrics.length > 0 && (
+                        <div>
+                          <h4 className={`${textClass} font-semibold mb-3`}>AI Suggestions:</h4>
+                          <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
+                            {suggestedMetrics.map((metric, idx) => {
+                              const isSelected = selectedMetrics.some(m => m.name === metric.name);
+                              return (
+                                <div
+                                  key={idx}
+                                  onClick={() => toggleMetricSelection(idx)}
+                                  className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all ${
+                                    isSelected
+                                      ? `${darkMode ? 'bg-cyan-900 border-2 border-cyan-500' : 'bg-cyan-50 border-2 border-cyan-500'}`
+                                      : `${darkMode ? 'bg-slate-700/50 hover:bg-slate-700' : 'bg-slate-100 hover:bg-slate-200'} border-2 border-transparent`
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    readOnly
+                                    className="w-5 h-5 rounded text-cyan-600 focus:ring-cyan-500"
+                                  />
+                                  <div className="flex-1">
+                                    <p className={`font-semibold ${textClass}`}>{metric.name}</p>
+                                    <p className={`text-sm ${textMutedClass}`}>{metric.description}</p>
+                                  </div>
+                                  <span className={`text-xs px-2 py-1 rounded-full ${darkMode ? 'bg-slate-600' : 'bg-slate-300'} ${textClass}`}>
+                                    {metric.type.toUpperCase()}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      <div>
+                        <h4 className={`${textClass} font-semibold mb-3`}>
+                          Final Metrics to Extract ({selectedMetrics.length}):
+                        </h4>
+                        <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
+                          {selectedMetrics.map((metric, idx) => (
+                            <div
+                              key={idx}
+                              className={`flex items-center gap-3 p-3 rounded-lg ${
+                                darkMode ? 'bg-slate-700' : 'bg-slate-100'
+                              }`}
+                            >
+                              <Database className={`w-5 h-5 ${accentText}`} />
+                              <div className="flex-1">
+                                <p className={`font-semibold ${textClass}`}>{metric.name}</p>
+                                <p className={`text-sm ${textMutedClass}`}>{metric.description}</p>
+                              </div>
+                              <span className={`text-xs px-2 py-1 rounded-full ${darkMode ? 'bg-slate-600' : 'bg-slate-300'} ${textClass}`}>
+                                {metric.type.toUpperCase()}
+                              </span>
+                              <button
+                                onClick={() => setEditingMetric({ ...metric, id: idx })}
+                                className="p-1 hover:bg-slate-600 rounded-lg transition-colors"
+                              >
+                                <Edit className="w-4 h-4 text-cyan-400" />
+                              </button>
+                              <button
+                                onClick={() => deleteMetric(idx)}
+                                className="p-1 hover:bg-red-500/50 rounded-lg transition-colors"
+                              >
+                                <Trash2 className="w-4 h-4 text-red-400" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {error && (
+                        <div className="flex items-center gap-3 p-4 bg-red-500 bg-opacity-20 border border-red-500 rounded-lg">
+                          <AlertCircle className="w-5 h-5 text-red-300" />
+                          <p className="text-red-300">{error}</p>
+                        </div>
+                      )}
+
+                      <div className="flex gap-4">
+                        <button
+                          onClick={() => setStep(2)}
+                          className="flex-1 py-4 bg-slate-600 hover:bg-slate-700 text-white font-bold rounded-xl transition-all shadow-lg flex items-center justify-center gap-3"
+                        >
+                          <ArrowLeft className="w-5 h-5" />
+                          <span>Back</span>
+                        </button>
+                        <button
+                          onClick={handleStep3}
+                          disabled={selectedMetrics.length === 0 || processing}
+                          className="flex-1 py-4 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 disabled:from-gray-600 disabled:to-gray-700 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-all shadow-lg flex items-center justify-center gap-3"
+                        >
+                          {processing ? (
+                            <>
+                              <Loader className="w-5 h-5 animate-spin" />
+                              <span>Deploying...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Database className="w-5 h-5" />
+                              <span>Start Extraction & Deployment</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </FadeIn>
+                )}
+                
+                {/* Step 4: Processing */}
+                {step === 4 && processing && (
+                  <FadeIn key="step4">
+                    <div className="space-y-6 text-center">
+                      <Activity className={`w-16 h-16 ${accentText} mx-auto mb-4 animate-pulse`} />
+                      <h3 className={`text-2xl font-bold ${textClass}`}>{currentStage}</h3>
+                      <div className={`w-full ${darkMode ? 'bg-slate-700' : 'bg-slate-200'} rounded-full h-4 overflow-hidden`}>
+                        <div 
+                          className={`h-full transition-all duration-500 ${accentGradient}`}
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+                      <span className={`text-xl font-bold ${textClass} mt-2 block`}>{progress}% Complete</span>
+                    </div>
+                  </FadeIn>
+                )}
+
+                {/* Step 5: Results */}
+                {step === 5 && results && (
+                  <FadeIn key="step5">
+                    <div className="space-y-6">
+                      <div className="bg-green-500/20 backdrop-blur-lg rounded-xl p-6 border border-green-500/30">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-4">
+                            <CheckCircle className="w-10 h-10 text-green-400" />
+                            <div>
+                              <h3 className="text-xl font-bold text-white">Success!</h3>
+                              <p className="text-green-200">Metrics extracted and deployed.</p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={resetForm}
+                            className="px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg transition-colors"
+                          >
+                            New Process
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {Object.entries(results.extracted_metrics).map(([key, value]) => (
+                          <div
+                            key={key}
+                            className={`${darkMode ? 'bg-slate-700' : 'bg-slate-100'} p-4 rounded-xl`}
+                          >
+                            <p className={textMutedClass}>
+                              {key.replace(/_/g, ' ').toUpperCase()}
+                            </p>
+                            <p className={`text-2xl font-bold ${accentText}`}>
+                              {String(value)}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className={`p-6 rounded-xl ${darkMode ? 'bg-slate-700/50' : 'bg-slate-100/50'}`}>
+                        <h4 className={`font-bold ${textClass} mb-3 flex items-center gap-2`}>
+                          <Database className="w-5 h-5 text-green-400" /> Snowflake Deployment Details
+                        </h4>
+                        <p className={textMutedClass}>
+                          <span className="font-semibold">Status:</span> {results.deployment.status}
+                        </p>
+                        <p className={textMutedClass}>
+                          <span className="font-semibold">Target:</span> {results.deployment.database}.{results.deployment.schema}
+                        </p>
+                      </div>
+                    </div>
+                  </FadeIn>
+                )}
               </div>
             </div>
-          </div>
-        )}
-      </main>
+          )}
+        
+          {/* Edit Metric Modal */}
+          {editingMetric && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+              <div className={`${darkMode ? 'bg-slate-900' : 'bg-white'} rounded-2xl shadow-2xl max-w-md w-full p-6`}>
+                <h4 className={`text-xl font-bold ${textClass} mb-4`}>
+                  {editingMetric.id !== undefined ? 'Edit Metric' : 'Add Metric'}
+                </h4>
+                <div className="space-y-4">
+                  <div>
+                    <label className={`block ${textClass} font-medium mb-2`}>Name (snake_case)</label>
+                    <input
+                      type="text"
+                      value={editingMetric.name}
+                      onChange={(e) => setEditingMetric({ ...editingMetric, name: e.target.value })}
+                      className={`w-full px-4 py-2 rounded-lg ${darkMode ? 'bg-slate-700 text-white border-slate-600' : 'bg-white text-slate-900 border-slate-300'} border focus:outline-none focus:ring-2 ${accentRing}`}
+                      placeholder="metric_name"
+                    />
+                  </div>
+                  <div>
+                    <label className={`block ${textClass} font-medium mb-2`}>Type</label>
+                    <select
+                      value={editingMetric.type}
+                      onChange={(e) => setEditingMetric({ ...editingMetric, type: e.target.value })}
+                      className={`w-full px-4 py-2 rounded-lg ${darkMode ? 'bg-slate-700 text-white border-slate-600' : 'bg-white text-slate-900 border-slate-300'} border focus:outline-none focus:ring-2 ${accentRing}`}
+                    >
+                      <option value="str">String</option>
+                      <option value="int">Integer</option>
+                      <option value="float">Float</option>
+                      <option value="bool">Boolean</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className={`block ${textClass} font-medium mb-2`}>Description</label>
+                    <textarea
+                      value={editingMetric.description}
+                      onChange={(e) => setEditingMetric({ ...editingMetric, description: e.target.value })}
+                      className={`w-full px-4 py-2 rounded-lg ${darkMode ? 'bg-slate-700 text-white border-slate-600' : 'bg-white text-slate-900 border-slate-300'} border focus:outline-none focus:ring-2 ${accentRing}`}
+                      rows={3}
+                      placeholder="A description of the metric for the AI model."
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-4 mt-6">
+                  <button
+                    onClick={() => setEditingMetric(null)}
+                    className="flex-1 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-lg transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={saveMetric}
+                    className={`flex-1 py-2 ${accentGradient} ${accentHover} text-white rounded-lg transition-colors`}
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </main>
+      </div>
     </div>
   );
 }
