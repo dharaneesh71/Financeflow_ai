@@ -13,9 +13,9 @@ class FinancialAnalyzer:
         try:
             genai.configure(api_key=settings.gemini_api_key)
             # Use the free Gemini 2.0 Flash model
-            self.model = genai.GenerativeModel('gemini-2.0-flash-exp')
+            self.model = genai.GenerativeModel('gemini-2.5-flash')
             self.use_gemini = True
-            print("✅ Gemini AI Analyzer initialized (gemini-2.0-flash-exp)")
+            print("✅ Gemini AI Analyzer initialized (gemini-2.5-flash)")
         except Exception as e:
             print(f"⚠️  Gemini initialization error: {e}")
             self.use_gemini = False

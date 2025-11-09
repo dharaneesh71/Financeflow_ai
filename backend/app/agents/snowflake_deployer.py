@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Dict, Any, Optional
 import snowflake.connector
 from app.models import DatabaseSchema, ExtractionResult, DeploymentResult
 from app.config import get_settings
@@ -24,13 +24,115 @@ class SnowflakeDeployer:
     async def deploy(
         self, 
         schema: DatabaseSchema, 
-        extraction_results: List[ExtractionResult]
+        extraction_results: List[ExtractionResult] = None,
+        extracted_metrics: Dict[str, Any] = None,
+        metrics: List[Dict[str, Any]] = None,
+        document_name: str = None
     ) -> DeploymentResult:
         """Deploy schema and load data to Snowflake"""
         
         if not self.use_snowflake:
-            return self._mock_deployment(schema, extraction_results)
+            return self._mock_deployment(schema, extraction_results, extracted_metrics, metrics)
         
+        # If we have extracted metrics, use metrics deployment
+        if extracted_metrics and metrics:
+            return await self._deploy_metrics(schema, extracted_metrics, metrics, document_name)
+        
+        # Otherwise use standard deployment
+        if extraction_results:
+            return await self._deploy_standard(schema, extraction_results)
+        
+        # If nothing provided, just create tables
+        return await self._deploy_schema_only(schema)
+    
+    async def _deploy_metrics(
+        self,
+        schema: DatabaseSchema,
+        extracted_metrics: Dict[str, Any],
+        metrics: List[Dict[str, Any]],
+        document_name: str = None
+    ) -> DeploymentResult:
+        """Deploy extracted metrics to Snowflake"""
+        try:
+            print(f"  📡 Connecting to Snowflake...")
+            
+            conn = snowflake.connector.connect(
+                user=settings.snowflake_user,
+                password=settings.snowflake_password,
+                account=settings.snowflake_account,
+                warehouse=settings.snowflake_warehouse,
+                database=settings.snowflake_database,
+                schema=settings.snowflake_schema,
+                role=settings.snowflake_role
+            )
+            
+            cursor = conn.cursor()
+            
+            # Create database and schema if not exists
+            print(f"  🗄️  Setting up database...")
+            cursor.execute(f"DROP DATABASE {settings.snowflake_database}")
+            cursor.execute(f"CREATE DATABASE {settings.snowflake_database}")
+            cursor.execute(f"USE DATABASE {settings.snowflake_database}")
+            cursor.execute(f"CREATE SCHEMA {settings.snowflake_schema}")
+            cursor.execute(f"USE SCHEMA {settings.snowflake_schema}")
+            
+            # Execute DDL to create tables
+            print(f"  📋 Creating tables...")
+            ddl_statements = [stmt.strip() for stmt in schema.ddl_sql.split(';') if stmt.strip()]
+            
+            for i, ddl in enumerate(ddl_statements, 1):
+                if ddl and not ddl.startswith('--'):
+                    print(f"     Executing DDL statement {i}/{len(ddl_statements)}")
+                    cursor.execute(ddl)
+            
+            tables_created = len(schema.tables)
+            print(f"  ✅ Created {tables_created} tables")
+            
+            # Load metrics data
+            print(f"  📊 Loading metrics data...")
+            
+            # Build insert statement
+            column_names = ["DOCUMENT_NAME"] + [m.get('name', '').upper() for m in metrics]
+            placeholders = ", ".join(["%s"] * len(column_names))
+            columns_str = ", ".join(column_names)
+            
+            insert_sql = f"INSERT INTO EXTRACTED_METRICS ({columns_str}) VALUES ({placeholders})"
+            
+            # Prepare values
+            values = [document_name or "unknown"]
+            for metric in metrics:
+                metric_name = metric.get('name', '')
+                value = extracted_metrics.get(metric_name)
+                values.append(value)
+            
+            cursor.execute(insert_sql, values)
+            rows_loaded = 1
+            
+            conn.commit()
+            cursor.close()
+            conn.close()
+            
+            print(f"  ✅ Loaded {rows_loaded} row(s) of metrics")
+            
+            return DeploymentResult(
+                tables_created=tables_created,
+                rows_loaded=rows_loaded,
+                database=settings.snowflake_database,
+                schema=settings.snowflake_schema,
+                status="success"
+            )
+            
+        except Exception as e:
+            print(f"  ❌ Snowflake deployment error: {e}")
+            print(f"  ⚠️  Falling back to mock deployment")
+            return self._mock_deployment(schema, None, extracted_metrics, metrics)
+    
+    async def _deploy_standard(
+        self,
+        schema: DatabaseSchema,
+        extraction_results: List[ExtractionResult]
+    ) -> DeploymentResult:
+        """Deploy standard extraction results to Snowflake"""
         try:
             print(f"  📡 Connecting to Snowflake...")
             
@@ -151,17 +253,64 @@ class SnowflakeDeployer:
         except Exception as e:
             print(f"  ❌ Snowflake deployment error: {e}")
             print(f"  ⚠️  Falling back to mock deployment")
-            return self._mock_deployment(schema, extraction_results)
+            return self._mock_deployment(schema, extraction_results, None, None)
+    
+    async def _deploy_schema_only(self, schema: DatabaseSchema) -> DeploymentResult:
+        """Deploy only schema without data"""
+        try:
+            conn = snowflake.connector.connect(
+                user=settings.snowflake_user,
+                password=settings.snowflake_password,
+                account=settings.snowflake_account,
+                warehouse=settings.snowflake_warehouse,
+                database=settings.snowflake_database,
+                schema=settings.snowflake_schema,
+                role=settings.snowflake_role
+            )
+            
+            cursor = conn.cursor()
+            cursor.execute(f"CREATE DATABASE IF NOT EXISTS {settings.snowflake_database}")
+            cursor.execute(f"USE DATABASE {settings.snowflake_database}")
+            cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {settings.snowflake_schema}")
+            cursor.execute(f"USE SCHEMA {settings.snowflake_schema}")
+            
+            ddl_statements = [stmt.strip() for stmt in schema.ddl_sql.split(';') if stmt.strip()]
+            for ddl in ddl_statements:
+                if ddl and not ddl.startswith('--'):
+                    cursor.execute(ddl)
+            
+            conn.commit()
+            cursor.close()
+            conn.close()
+            
+            return DeploymentResult(
+                tables_created=len(schema.tables),
+                rows_loaded=0,
+                database=settings.snowflake_database,
+                schema=settings.snowflake_schema,
+                status="success (schema only)"
+            )
+        except Exception as e:
+            print(f"  ❌ Schema deployment error: {e}")
+            return self._mock_deployment(schema, None, None, None)
     
     def _mock_deployment(
         self, 
         schema: DatabaseSchema, 
-        extraction_results: List[ExtractionResult]
+        extraction_results: Optional[List[ExtractionResult]] = None,
+        extracted_metrics: Optional[Dict[str, Any]] = None,
+        metrics: Optional[List[Dict[str, Any]]] = None
     ) -> DeploymentResult:
         """Mock deployment for demo/testing"""
         
         tables_created = len(schema.tables)
-        rows_loaded = sum(len(r.extracted_fields) for r in extraction_results)
+        
+        if extracted_metrics:
+            rows_loaded = 1
+        elif extraction_results:
+            rows_loaded = sum(len(r.extracted_fields) for r in extraction_results)
+        else:
+            rows_loaded = 0
         
         print(f"  ✅ Mock deployment complete")
         print(f"     Tables: {tables_created}")

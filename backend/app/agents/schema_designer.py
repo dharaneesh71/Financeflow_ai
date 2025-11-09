@@ -21,13 +21,102 @@ class SchemaDesigner:
     
     async def design_schema(
         self, 
-        extraction_results: List[ExtractionResult],
-        analysis: FinancialInsight
+        extraction_results: List[ExtractionResult] = None,
+        analysis: FinancialInsight = None,
+        extracted_metrics: Dict[str, Any] = None,
+        metrics: List[Dict[str, Any]] = None
     ) -> DatabaseSchema:
         """Design optimal Snowflake database schema"""
         
-        # For now, always use basic schema (Gemini schema generation can be added later)
-        return self._create_star_schema(extraction_results, analysis)
+        # If we have metrics definitions, create schema for metrics
+        # (extracted_metrics is not required for schema design, only metrics definitions are needed)
+        if metrics:
+            return self._create_metrics_schema(extracted_metrics or {}, metrics)
+        
+        # Otherwise use the standard star schema
+        if extraction_results and analysis:
+            return self._create_star_schema(extraction_results, analysis)
+        
+        # Default schema if nothing provided
+        return self._create_default_schema()
+    
+    def _create_metrics_schema(
+        self,
+        extracted_metrics: Dict[str, Any],
+        metrics: List[Dict[str, Any]]
+    ) -> DatabaseSchema:
+        """Create schema for extracted metrics"""
+        
+        print("  🏗️  Creating metrics schema...")
+        
+        # Create a metrics table with columns for each metric
+        metric_columns = [
+            TableColumn(name="METRIC_ID", type="NUMBER", constraints="PRIMARY KEY IDENTITY(1,1)"),
+            TableColumn(name="DOCUMENT_NAME", type="VARCHAR(255)", constraints="NOT NULL"),
+            TableColumn(name="EXTRACTION_DATE", type="TIMESTAMP", constraints="DEFAULT CURRENT_TIMESTAMP()"),
+        ]
+        
+        # Add a column for each metric
+        for metric in metrics:
+            metric_name = metric.get('name', '').upper()
+            metric_type = metric.get('type', 'str')
+            
+            # Map Python types to Snowflake types
+            type_mapping = {
+                'str': 'VARCHAR(500)',
+                'int': 'NUMBER',
+                'float': 'NUMBER(18,2)',
+                'bool': 'BOOLEAN'
+            }
+            snowflake_type = type_mapping.get(metric_type, 'VARCHAR(500)')
+            
+            metric_columns.append(
+                TableColumn(name=metric_name, type=snowflake_type, constraints="")
+            )
+        
+        metrics_table = TableSchema(
+            table_name="EXTRACTED_METRICS",
+            columns=metric_columns,
+            indexes=["DOCUMENT_NAME", "EXTRACTION_DATE"]
+        )
+        
+        # Generate DDL
+        columns = []
+        for col in metrics_table.columns:
+            col_def = f"  {col.name} {col.type}"
+            if col.constraints:
+                col_def += f" {col.constraints}"
+            columns.append(col_def)
+        
+        ddl_sql = f"CREATE TABLE IF NOT EXISTS {metrics_table.table_name} (\n"
+        ddl_sql += ",\n".join(columns)
+        ddl_sql += "\n);"
+        
+        print(f"  ✅ Metrics schema created: 1 table with {len(metrics)} metric columns")
+        
+        return DatabaseSchema(
+            tables=[metrics_table],
+            relationships=[],
+            validation_rules=[],
+            clustering_recommendations=[],
+            ddl_sql=ddl_sql
+        )
+    
+    def _create_default_schema(self) -> DatabaseSchema:
+        """Create default schema when no data provided"""
+        from app.models import FinancialInsight
+        dummy_analysis = FinancialInsight(
+            document_type="unknown",
+            time_period="unknown",
+            fiscal_year=2024,
+            fiscal_quarter=None,
+            detected_relationships=[],
+            suggested_metrics=[],
+            data_quality={},
+            issues=[],
+            insights=[]
+        )
+        return self._create_star_schema([], dummy_analysis)
     
     def _create_star_schema(
         self, 
@@ -42,7 +131,7 @@ class SchemaDesigner:
         dim_time = TableSchema(
             table_name="DIM_TIME_PERIOD",
             columns=[
-                TableColumn(name="PERIOD_ID", type="NUMBER", constraints="PRIMARY KEY AUTOINCREMENT"),
+                TableColumn(name="PERIOD_ID", type="NUMBER", constraints="PRIMARY KEY IDENTITY(1,1)"),
                 TableColumn(name="FISCAL_YEAR", type="NUMBER", constraints="NOT NULL"),
                 TableColumn(name="FISCAL_QUARTER", type="NUMBER", constraints=""),
                 TableColumn(name="PERIOD_NAME", type="VARCHAR(50)", constraints="NOT NULL"),
@@ -56,7 +145,7 @@ class SchemaDesigner:
         dim_account = TableSchema(
             table_name="DIM_ACCOUNT",
             columns=[
-                TableColumn(name="ACCOUNT_ID", type="NUMBER", constraints="PRIMARY KEY AUTOINCREMENT"),
+                TableColumn(name="ACCOUNT_ID", type="NUMBER", constraints="PRIMARY KEY IDENTITY(1,1)"),
                 TableColumn(name="ACCOUNT_NAME", type="VARCHAR(200)", constraints="NOT NULL"),
                 TableColumn(name="ACCOUNT_TYPE", type="VARCHAR(50)", constraints="NOT NULL"),
                 TableColumn(name="DOCUMENT_TYPE", type="VARCHAR(50)", constraints=""),
@@ -70,7 +159,7 @@ class SchemaDesigner:
         dim_document = TableSchema(
             table_name="DIM_DOCUMENT",
             columns=[
-                TableColumn(name="DOCUMENT_ID", type="NUMBER", constraints="PRIMARY KEY AUTOINCREMENT"),
+                TableColumn(name="DOCUMENT_ID", type="NUMBER", constraints="PRIMARY KEY IDENTITY(1,1)"),
                 TableColumn(name="FILE_NAME", type="VARCHAR(255)", constraints="NOT NULL"),
                 TableColumn(name="DOCUMENT_TYPE", type="VARCHAR(50)", constraints=""),
                 TableColumn(name="UPLOAD_DATE", type="TIMESTAMP", constraints="DEFAULT CURRENT_TIMESTAMP()"),
@@ -83,7 +172,7 @@ class SchemaDesigner:
         fact_financial = TableSchema(
             table_name="FACT_FINANCIAL_DATA",
             columns=[
-                TableColumn(name="FACT_ID", type="NUMBER", constraints="PRIMARY KEY AUTOINCREMENT"),
+                TableColumn(name="FACT_ID", type="NUMBER", constraints="PRIMARY KEY IDENTITY(1,1)"),
                 TableColumn(name="PERIOD_ID", type="NUMBER", constraints="NOT NULL"),
                 TableColumn(name="ACCOUNT_ID", type="NUMBER", constraints="NOT NULL"),
                 TableColumn(name="DOCUMENT_ID", type="NUMBER", constraints=""),

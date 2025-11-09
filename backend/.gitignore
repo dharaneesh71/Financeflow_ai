@@ -6,6 +6,7 @@ __pycache__/
 .Python
 env/
 venv/
+backend_env/
 ENV/
 build/
 develop-eggs/
@@ -34,7 +35,7 @@ uploads/
 *.png
 *.jpg
 *.jpeg
-
+*.md
 # IDE
 .vscode/
 .idea/
