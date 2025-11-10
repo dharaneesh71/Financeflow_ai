@@ -297,11 +297,40 @@ class MetricExtractionPipeline:
         print("--- (Metric Graph) 2c. Deploying Metrics ---")
         total_rows_loaded = 0
         final_deployment_result = None
-
+        extracted_metrics_by_document = {}  # Store metrics by document name
+        
+        # Step 1: Create schema once (outside the loop)
+        if state["markdown_paths"]:
+            # Get extraction data from first document to design schema
+            first_md_path = state["markdown_paths"][0]
+            first_doc_name = (first_md_path.split('/')[-1]).split('.')[0]
+            
+            first_extraction_data = await self.extractor.extract_metrics_from_markdown(
+                markdown_path=first_md_path,
+                metrics=state["selected_metrics"]
+            )
+            
+            if "error" not in first_extraction_data and first_extraction_data.get("extraction"):
+                # Create schema once
+                schema_result = await self.designer.design_schema(
+                    extracted_metrics=first_extraction_data["extraction"],
+                    metrics=state["selected_metrics"]
+                )
+                
+                # Create database schema once
+                schema_deployment = await self.deployer.create_schema_if_not_exists(schema_result)
+                print(f"  ✅ Schema created: {schema_deployment.tables_created} tables")
+                
+                final_deployment_result = schema_deployment
+            else:
+                print("  ❌ Failed to extract metrics from first document for schema design")
+                return {"deployment_result": None, "extracted_metrics": {}, "extracted_metrics_by_document": {}}
+        
+        # Step 2: Process each document and insert as separate row
         for md_path in state["markdown_paths"]:
             doc_name = (md_path.split('/')[-1]).split('.')[0]
             
-            # Extract metrics for *this* document
+            # Extract metrics for this document
             extraction_data = await self.extractor.extract_metrics_from_markdown(
                 markdown_path=md_path,
                 metrics=state["selected_metrics"]
@@ -311,21 +340,29 @@ class MetricExtractionPipeline:
                 print(f"Skipping {doc_name}, extraction failed.")
                 continue
             
-            # Deploy metrics for *this* document
-            # Note: deployer uses settings.snowflake_database and settings.snowflake_schema
-            deployment_result = await self.deployer.deploy(
-                schema=state["schema"],
+            # Store metrics by document for frontend display
+            extracted_metrics_by_document[doc_name] = extraction_data["extraction"]
+            
+            # Insert this document's metrics as a separate row
+            rows_inserted = await self.deployer.insert_metrics_row(
                 extracted_metrics=extraction_data["extraction"],
                 metrics=state["selected_metrics"],
                 document_name=doc_name
             )
-            total_rows_loaded += deployment_result.rows_loaded
-            final_deployment_result = deployment_result
-
+            total_rows_loaded += rows_inserted
+        
+        # Update deployment result with total rows
         if final_deployment_result:
             final_deployment_result.rows_loaded = total_rows_loaded
+            final_deployment_result.status = "success"
         
-        return {"deployment_result": final_deployment_result}
+        print(f"  ✅ Total rows inserted: {total_rows_loaded}")
+        
+        return {
+            "deployment_result": final_deployment_result,
+            "extracted_metrics": extracted_metrics_by_document,  # Legacy field - first document's metrics
+            "extracted_metrics_by_document": extracted_metrics_by_document  # New field - all documents
+        }
 
     # --- Main .run() Method ---
     

@@ -80,11 +80,14 @@ class ProcessResponse(BaseModel):
     """Complete processing response"""
     markdown_paths: List[str] = []  # Markdown files extracted
     suggested_metrics: Optional[List[MetricDefinition]] = None  # AI-suggested metrics
-    extracted_metrics: Optional[Dict[str, Any]] = None  # Extracted metric values
-    schema: DatabaseSchema
-    deployment: DeploymentResult
+    extracted_metrics: Optional[Dict[str, Any]] = None  # Extracted metric values (legacy - use extracted_metrics_by_document)
+    extracted_metrics_by_document: Optional[Dict[str, Dict[str, Any]]] = None  # New: metrics by document name
+    schema: Optional[DatabaseSchema] = None  # Optional - only present after processing
+    deployment: Optional[DeploymentResult] = None  # Optional - only present after processing
     extraction_results: List[ExtractionResult] = []  # Legacy field for compatibility
     analysis: Optional[FinancialInsight] = None  # Legacy field for compatibility
+    reasoning: Optional[str] = None  # Reasoning for metric suggestions
+    success: Optional[bool] = True  # Success flag
 
 class SuggestMetricsRequest(BaseModel):
     """Request to suggest metrics from markdown"""

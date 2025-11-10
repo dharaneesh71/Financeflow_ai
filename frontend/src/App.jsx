@@ -1259,19 +1259,41 @@ function App() {
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {Object.entries(results.extracted_metrics).map(([key, value]) => (
-                          <div
-                            key={key}
-                            className={`${darkMode ? 'bg-slate-700' : 'bg-slate-100'} p-4 rounded-xl`}
-                          >
-                            <p className={textMutedClass}>
-                              {key.replace(/_/g, ' ').toUpperCase()}
-                            </p>
-                            <p className={`text-2xl font-bold ${accentText}`}>
-                              {String(value)}
-                            </p>
-                          </div>
-                        ))}
+                        {results.extracted_metrics_by_document ? (
+                          // Show results organized by document
+                          Object.entries(results.extracted_metrics_by_document).map(([docName, metrics]) => (
+                            <div key={docName} className={`${darkMode ? 'bg-slate-700' : 'bg-slate-100'} p-4 rounded-xl`}>
+                              <h4 className={`font-semibold mb-2 ${textClass}`}>
+                                {docName.replace(/_/g, ' ').toUpperCase()}
+                              </h4>
+                              {Object.entries(metrics).map(([key, value]) => (
+                                <div key={key} className="mb-2">
+                                  <p className={textMutedClass}>
+                                    {key.replace(/_/g, ' ').toUpperCase()}
+                                  </p>
+                                  <p className={`text-lg font-bold ${accentText}`}>
+                                    {String(value)}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          ))
+                        ) : (
+                          // Fallback to legacy display
+                          Object.entries(results.extracted_metrics).map(([key, value]) => (
+                            <div
+                              key={key}
+                              className={`${darkMode ? 'bg-slate-700' : 'bg-slate-100'} p-4 rounded-xl`}
+                            >
+                              <p className={textMutedClass}>
+                                {key.replace(/_/g, ' ').toUpperCase()}
+                              </p>
+                              <p className={`text-2xl font-bold ${accentText}`}>
+                                {String(value)}
+                              </p>
+                            </div>
+                          ))
+                        )}
                       </div>
 
                       <div className={`p-6 rounded-xl ${darkMode ? 'bg-slate-700/50' : 'bg-slate-100/50'}`}>

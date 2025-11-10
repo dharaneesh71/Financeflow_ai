@@ -1,12 +1,12 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List
+from typing import List, Optional, Dict, Any
 import os
 import shutil
 from pathlib import Path
 import traceback
 
-from app.agents.orchestrator import FinancePipeline, MetricExtractionPipeline, PipelineState
+from app.agents.orchestrator import FinancePipeline, MetricExtractionPipeline, PipelineState, MetricState
 from app.models import (
     ProcessRequest, ProcessResponse,
     SuggestMetricsRequest, SuggestMetricsResponse, MetricDefinition,
@@ -115,14 +115,15 @@ async def upload_files(files: List[UploadFile] = File(...)):
 
 @app.post("/api/process", response_model=ProcessResponse)
 async def process_documents(request: ProcessRequest):
-    """Process uploaded financial documents through LangGraph pipeline"""
+    """Process uploaded financial documents through LangGraph MetricExtractionPipeline"""
     
     print(f"\n{'='*60}")
-    print(f"🔄 PROCESSING REQUEST (LangGraph)")
+    print(f"🔄 PROCESSING REQUEST (MetricExtractionPipeline)")
     print(f"{'='*60}")
     print(f"Files to process: {len(request.file_paths)}")
     for path in request.file_paths:
         print(f"  - {path}")
+    print(f"Selected metrics: {len(request.selected_metrics) if request.selected_metrics else 0}")
     print()
     
     try:
@@ -132,46 +133,109 @@ async def process_documents(request: ProcessRequest):
                 raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
         
         # Get pipeline
-        finance_pipe, _ = get_pipelines()
+        _, metric_pipe = get_pipelines()
         
-        # Prepare initial state for FinancePipeline
-        initial_state: PipelineState = {
-            "file_paths": request.file_paths,
+        # Determine workflow: if selected_metrics provided, use "process" branch, else "suggest" branch
+        has_selected_metrics = request.selected_metrics and len(request.selected_metrics) > 0
+        current_step = "process" if has_selected_metrics else "suggest"
+        
+        # Convert MetricDefinition to dict for pipeline
+        selected_metrics_dict = []
+        if request.selected_metrics:
+            selected_metrics_dict = [
+                {
+                    "name": metric.name,
+                    "type": metric.type,
+                    "description": metric.description
+                }
+                for metric in request.selected_metrics
+            ]
+        
+        # For process step, if we have file_paths but no markdown_paths, extract markdown first
+        markdown_paths = []
+        if current_step == "process" and request.file_paths:
+            # Extract markdown from files if not already extracted
+            from app.agents.extractor import DocumentExtractor
+            extractor = DocumentExtractor()
+            print(f"  📄 Extracting markdown from {len(request.file_paths)} file(s) for processing...")
+            for file_path in request.file_paths:
+                try:
+                    md_path = await extractor.extract_markdown_from_document(
+                        file_path=file_path,
+                        output_dir=settings.upload_dir
+                    )
+                    markdown_paths.append(md_path)
+                except Exception as e:
+                    print(f"  ⚠️  Error extracting markdown from {file_path}: {e}")
+                    # Continue with other files
+            print(f"  ✅ Extracted {len(markdown_paths)} markdown file(s)")
+        
+        # Prepare initial state for MetricExtractionPipeline
+        initial_state: MetricState = {
+            "current_step": current_step,
+            "file_paths": request.file_paths if current_step == "suggest" else [],
+            "markdown_paths": markdown_paths if current_step == "process" else [],  # Will be populated by suggest step
+            "user_prompt": request.user_prompt or "",
+            "selected_metrics": selected_metrics_dict,
             "database_name": settings.snowflake_database,
             "schema_name": settings.snowflake_schema,
-            "user_prompt": request.user_prompt or "",
-            "selected_metrics": [],
-            "markdown_paths": [],
-            "extraction_results": [],
-            "analysis": None,
+            "suggested_metrics": [],
+            "reasoning": "",
             "schema": None,
             "deployment_result": None,
-            "stop_after": request.stop_after or "all",
+            "extracted_metrics": {},
             "error": ""
         }
         
         # Run the LangGraph pipeline
         print(f"{'='*60}")
-        print(f"🔄 Running LangGraph FinancePipeline...")
+        print(f"🔄 Running LangGraph MetricExtractionPipeline ({current_step} branch)...")
         print(f"{'='*60}\n")
         
-        final_state = await finance_pipe.app.ainvoke(initial_state)
+        final_state = await metric_pipe.app.ainvoke(initial_state)
         
         # Check for errors
         if final_state.get("error"):
             raise HTTPException(status_code=500, detail=final_state["error"])
         
-        # Build response
-        response = ProcessResponse(
-            extraction_results=final_state.get("extraction_results", []),
-            analysis=final_state.get("analysis"),
-            schema=final_state.get("schema"),
-            deployment=final_state.get("deployment_result")
-        )
-        
-        print(f"{'='*60}")
-        print(f"✅ PROCESSING COMPLETE!")
-        print(f"{'='*60}\n")
+        # Build response based on which branch was executed
+        if current_step == "suggest":
+            # Suggest branch: return suggested metrics and markdown paths
+            suggested_metrics = [
+                MetricDefinition(**metric)
+                for metric in final_state.get("suggested_metrics", [])
+            ]
+            
+            response = ProcessResponse(
+                markdown_paths=final_state.get("markdown_paths", []),
+                suggested_metrics=suggested_metrics,
+                reasoning=final_state.get("reasoning"),
+                success=True
+            )
+            
+            print(f"{'='*60}")
+            print(f"✅ SUGGESTION COMPLETE!")
+            print(f"   Suggested {len(suggested_metrics)} metrics")
+            print(f"{'='*60}\n")
+            
+        else:
+            # Process branch: return extracted metrics, schema, and deployment
+            response = ProcessResponse(
+                markdown_paths=final_state.get("markdown_paths", []),
+                extracted_metrics=final_state.get("extracted_metrics", {}),  # Legacy - first doc only
+                extracted_metrics_by_document=final_state.get("extracted_metrics_by_document", {}),  # New - all docs
+                schema=final_state.get("schema"),
+                deployment=final_state.get("deployment_result"),
+                success=True
+            )
+            
+            print(f"{'='*60}")
+            print(f"✅ PROCESSING COMPLETE!")
+            if final_state.get("schema"):
+                print(f"   Created {len(final_state['schema'].tables)} tables")
+            if final_state.get("deployment_result"):
+                print(f"   Loaded {final_state['deployment_result'].rows_loaded} rows")
+            print(f"{'='*60}\n")
         
         return response
         
@@ -343,6 +407,32 @@ async def extract_metrics(request: ExtractMetricsRequest):
         print(f"{'='*60}\n")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Metric extraction failed: {str(e)}")
+
+@app.post("/api/logs")
+async def add_log_entry(request: Dict[str, Any]):
+    """Add a new log entry"""
+    try:
+        log_entry = {
+            "id": int(time.time() * 1000),  # timestamp-based ID
+            "message": request.get("message", ""),
+            "type": request.get("type", "info"),
+            "timestamp": request.get("timestamp", "")
+        }
+        logs_store.append(log_entry)
+        # Keep only last 1000 logs to prevent memory issues
+        if len(logs_store) > 1000:
+            logs_store.pop(0)
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to add log: {str(e)}")
+
+@app.get("/api/logs")
+async def get_logs():
+    """Get all log entries"""
+    try:
+        return {"logs": logs_store}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch logs: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

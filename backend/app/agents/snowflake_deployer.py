@@ -45,6 +45,116 @@ class SnowflakeDeployer:
         # If nothing provided, just create tables
         return await self._deploy_schema_only(schema)
     
+    async def create_schema_if_not_exists(self, schema: DatabaseSchema) -> DeploymentResult:
+        """Create database, schema and tables once (not per document)"""
+        if not self.use_snowflake:
+            return self._mock_schema_creation(schema)
+        
+        try:
+            print(f"  📡 Connecting to Snowflake for schema creation...")
+            
+            conn = snowflake.connector.connect(
+                user=settings.snowflake_user,
+                password=settings.snowflake_password,
+                account=settings.snowflake_account,
+                warehouse=settings.snowflake_warehouse,
+                database=settings.snowflake_database,
+                schema=settings.snowflake_schema,
+                role=settings.snowflake_role
+            )
+            
+            cursor = conn.cursor()
+            
+            # Create database and schema if not exists (don't drop!)
+            print(f"  🗄️  Setting up database and schema...")
+            cursor.execute(f"CREATE DATABASE IF NOT EXISTS {settings.snowflake_database}")
+            cursor.execute(f"USE DATABASE {settings.snowflake_database}")
+            cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {settings.snowflake_schema}")
+            cursor.execute(f"USE SCHEMA {settings.snowflake_schema}")
+            
+            # Execute DDL to create tables
+            print(f"  📋 Creating tables...")
+            ddl_statements = [stmt.strip() for stmt in schema.ddl_sql.split(';') if stmt.strip()]
+            
+            for i, ddl in enumerate(ddl_statements, 1):
+                if ddl and not ddl.startswith('--'):
+                    print(f"     Executing DDL statement {i}/{len(ddl_statements)}")
+                    cursor.execute(ddl)
+            
+            tables_created = len(schema.tables)
+            print(f"  ✅ Created {tables_created} tables")
+            
+            conn.commit()
+            cursor.close()
+            conn.close()
+            
+            return DeploymentResult(
+                tables_created=tables_created,
+                rows_loaded=0,  # No data loaded yet
+                database=settings.snowflake_database,
+                schema=settings.snowflake_schema,
+                status="schema_created"
+            )
+            
+        except Exception as e:
+            print(f"  ❌ Schema creation error: {e}")
+            return self._mock_schema_creation(schema)
+    
+    async def insert_metrics_row(
+        self,
+        extracted_metrics: Dict[str, Any],
+        metrics: List[Dict[str, Any]],
+        document_name: str = None
+    ) -> int:
+        """Insert a single row of metrics data (call this for each document)"""
+        if not self.use_snowflake:
+            return 1  # Mock: pretend we inserted 1 row
+        
+        try:
+            print(f"  📊 Inserting metrics for document: {document_name}")
+            
+            conn = snowflake.connector.connect(
+                user=settings.snowflake_user,
+                password=settings.snowflake_password,
+                account=settings.snowflake_account,
+                warehouse=settings.snowflake_warehouse,
+                database=settings.snowflake_database,
+                schema=settings.snowflake_schema,
+                role=settings.snowflake_role
+            )
+            
+            cursor = conn.cursor()
+            cursor.execute(f"USE DATABASE {settings.snowflake_database}")
+            cursor.execute(f"USE SCHEMA {settings.snowflake_schema}")
+            
+            # Build insert statement
+            column_names = ["DOCUMENT_NAME"] + [m.get('name', '').upper() for m in metrics]
+            placeholders = ", ".join(["%s"] * len(column_names))
+            columns_str = ", ".join(column_names)
+            
+            insert_sql = f"INSERT INTO EXTRACTED_METRICS ({columns_str}) VALUES ({placeholders})"
+            
+            # Prepare values
+            values = [document_name or "unknown"]
+            for metric in metrics:
+                metric_name = metric.get('name', '')
+                value = extracted_metrics.get(metric_name)
+                values.append(value)
+            
+            cursor.execute(insert_sql, values)
+            rows_loaded = 1
+            
+            conn.commit()
+            cursor.close()
+            conn.close()
+            
+            print(f"  ✅ Inserted 1 row for {document_name}")
+            return rows_loaded
+            
+        except Exception as e:
+            print(f"  ❌ Insert error for {document_name}: {e}")
+            return 0
+    
     async def _deploy_metrics(
         self,
         schema: DatabaseSchema,
@@ -52,7 +162,10 @@ class SnowflakeDeployer:
         metrics: List[Dict[str, Any]],
         document_name: str = None
     ) -> DeploymentResult:
-        """Deploy extracted metrics to Snowflake"""
+        """Deploy extracted metrics to Snowflake - LEGACY METHOD, kept for compatibility"""
+        # This method is now deprecated - use create_schema_if_not_exists + insert_metrics_row instead
+        print("  ⚠️  Using legacy deployment method - consider updating to new approach")
+        
         try:
             print(f"  📡 Connecting to Snowflake...")
             
@@ -68,12 +181,11 @@ class SnowflakeDeployer:
             
             cursor = conn.cursor()
             
-            # Create database and schema if not exists
+            # Create database and schema if not exists (don't drop!)
             print(f"  🗄️  Setting up database...")
-            cursor.execute(f"DROP DATABASE {settings.snowflake_database}")
-            cursor.execute(f"CREATE DATABASE {settings.snowflake_database}")
+            cursor.execute(f"CREATE DATABASE IF NOT EXISTS {settings.snowflake_database}")
             cursor.execute(f"USE DATABASE {settings.snowflake_database}")
-            cursor.execute(f"CREATE SCHEMA {settings.snowflake_schema}")
+            cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {settings.snowflake_schema}")
             cursor.execute(f"USE SCHEMA {settings.snowflake_schema}")
             
             # Execute DDL to create tables
@@ -322,4 +434,18 @@ class SnowflakeDeployer:
             database=settings.snowflake_database or "FINANCIAL_DATA",
             schema=settings.snowflake_schema or "PUBLIC",
             status="success (mock - configure Snowflake for real deployment)"
+        )
+    
+    def _mock_schema_creation(self, schema: DatabaseSchema) -> DeploymentResult:
+        """Mock schema creation"""
+        tables_created = len(schema.tables)
+        print(f"  ✅ Mock schema creation complete")
+        print(f"     Tables: {tables_created}")
+        
+        return DeploymentResult(
+            tables_created=tables_created,
+            rows_loaded=0,
+            database=settings.snowflake_database,
+            schema=settings.snowflake_schema,
+            status="schema_created"
         )
