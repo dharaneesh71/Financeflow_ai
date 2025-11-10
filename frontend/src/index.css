@@ -5,14 +5,12 @@
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-  /* Add this to make the dark mode gradient smoother */
-  @apply bg-gradient-to-br from-slate-50 to-blue-100 dark:from-black dark:via-indigo-950 dark:to-black;
+  /* This is no longer needed because the App.jsx file's
+    main div has the 'bgClass' which handles the theme.
+  */
 }
 
-/* --- ADD ALL OF THIS BELOW --- */
-/* --- Add/Replace this in your main CSS file (e.g., index.css) --- */
-
-/* Snowfall Animation */
+/* --- Snowfall Animation (v2 - Realistic Flutter) --- */
 .snowfall-container {
   position: fixed;
   top: 0;
@@ -28,10 +26,10 @@ body {
   position: absolute;
   top: -10px;
   
-  /* Use font-size and color for the character */
-  color: white;
-  font-size: var(--size);
+  /* --- FIX: Snow is gray by default, and white in dark mode --- */
+  @apply text-gray-400 dark:text-white;
   
+  font-size: var(--size);
   opacity: 0.7;
   
   /* This animation handles the FALLING and DRIFTING */
@@ -66,4 +64,23 @@ body {
   to {
     transform: translateX(5px);
   }
+}
+
+/* --- Simple Fade-in Animations --- */
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-out;
+}
+
+.animate-fade-in-down {
+  animation: fadeInDown 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fadeInDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
