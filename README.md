@@ -179,7 +179,9 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-# Edit .env with your API keys and Snowflake credentials**Required Environment Variables:**
+# Edit .env with your API keys and Snowflake credentials
+
+**Required Environment Variables:**
 
 ```bash
 GEMINI_API_KEY=your_gemini_api_key
@@ -191,6 +193,7 @@ SNOWFLAKE_WAREHOUSE=COMPUTE_WH
 SNOWFLAKE_DATABASE=FINANCIAL_DATA
 SNOWFLAKE_SCHEMA=PUBLIC
 ```
+Note: Place `.env` file in same folder as `config.py`
 
 ### 3. Frontend Setup
 
@@ -212,9 +215,8 @@ npm run dev
 
 ### 4. Run Backend
 
-# From backend directory with virtual env activated
-
 ```bash
+# From backend directory with virtual env activated
 cd backend
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
