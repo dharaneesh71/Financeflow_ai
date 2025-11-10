@@ -1,6 +1,6 @@
-# FinanceFlow AI
+# SnowFlow AI
 
-An AI-powered financial document processing platform that automatically extracts, analyzes, and structures financial data from various document formats. Built for hackathons and enterprise financial data processing workflows.
+An AI-powered financial document processing platform that automatically extracts, analyzes, and structures financial data from various document formats, and ingests it into Snowflake. Built for hackathons and enterprise financial data processing workflows.
 
 ## 🚀 Features
 
@@ -143,21 +143,45 @@ graph TB
 
 ### 1. Clone and Setup
 
-git clone <repository-url>
-cd Financeflow_ai### 2. Backend Setup
+```bash
+git clone https://github.com/dharaneesh71/Financeflow_ai.git
+cd Financeflow_ai
+```
 
+### 2. Backend Setup
+
+```bash
 cd backend
+```
 
 # Create virtual environment
+
+```bash
 python -m venv backend_env
-source backend_env/bin/activate  # On Windows: backend_env\Scripts\activate
+source backend_env/bin/activate
+```  
+
+# On Windows:
+
+```bash
+backend_env\Scripts\activate
+```
 
 # Install dependencies
+
+```bash
 pip install -r requirements.txt
+```
 
 # Configure environment variables
+
+```bash
 cp .env.example .env
+```
+
 # Edit .env with your API keys and Snowflake credentials**Required Environment Variables:**
+
+```bash
 GEMINI_API_KEY=your_gemini_api_key
 LANDINGAI_API_KEY=your_landingai_api_key
 SNOWFLAKE_ACCOUNT=your_account.snowflakecomputing.com
@@ -165,19 +189,37 @@ SNOWFLAKE_USER=your_username
 SNOWFLAKE_PASSWORD=your_password
 SNOWFLAKE_WAREHOUSE=COMPUTE_WH
 SNOWFLAKE_DATABASE=FINANCIAL_DATA
-SNOWFLAKE_SCHEMA=PUBLIC### 3. Frontend Setup
+SNOWFLAKE_SCHEMA=PUBLIC
+```
 
+### 3. Frontend Setup
+
+```bash
 cd ../frontend
+```
 
 # Install dependencies
+
+```bash
 npm install
+```
 
 # Start development server
-npm run dev### 4. Run Backend
+
+```bash
+npm run dev
+```
+
+### 4. Run Backend
 
 # From backend directory with virtual env activated
+
+```bash
 cd backend
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload## 📖 API Documentation
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+## 📖 API Documentation
 
 Once the backend is running, visit:
 - **API Docs**: http://localhost:8000/docs
@@ -207,3 +249,50 @@ Once the backend is running, visit:
 Financeflow_ai/
 ├── backend/
 │   ├── app/
+│   │   ├── agents/           # AI agents (extractor, analyzer, etc.)
+│   │   ├── api/              # FastAPI routes
+│   │   ├── prompts/          # AI prompt templates
+│   │   ├── config.py         # Application configuration
+│   │   ├── main.py           # FastAPI application
+│   │   └── models.py         # Pydantic models
+│   ├── uploads/              # Uploaded documents
+│   └── requirements.txt
+├── frontend/
+│   ├── src/
+│   │   ├── App.jsx           # Main React application
+│   │   └── ...
+│   ├── package.json
+│   └── vite.config.js
+└── README.md
+```
+
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/new-feature`
+3. Commit changes: `git commit -am 'Add new feature'`
+4. Push to branch: `git push origin feature/new-feature`
+5. Submit a pull request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- Built for AI Finance Hackathon
+- Powered by Google Gemini AI and LandingAI
+- Snowflake for data warehousing
+- LangGraph for workflow orchestration
+
+## 📞 Support
+
+For questions or issues:
+- Create an issue on GitHub
+- Check the API documentation at `/docs`
+- Review the processing logs for debugging
+
+---
+
+**Happy coding! 🎉**
