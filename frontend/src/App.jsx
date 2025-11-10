@@ -8,10 +8,9 @@ import {
   EyeOff, Lock, Mail, BarChart3
 } from 'lucide-react';
 
-// --- NEW SNOWFALL COMPONENT (v2) ---
-// Creates a CSS-based snowfall animation
+// --- SNOWFALL COMPONENT (v2) ---
 const Snowfall = () => {
-  const snowflakeCount = 50; // Adjust number of snowflakes
+  const snowflakeCount = 50; 
   return (
     <div className="snowfall-container" aria-hidden="true">
       {Array.from({ length: snowflakeCount }).map((_, i) => (
@@ -27,7 +26,6 @@ const Snowfall = () => {
             '--flutter-duration': `${Math.random() * 2 + 3}s`,
           }}
         >
-          {/* This span handles the flutter, while the parent div handles the fall */}
           <span className="flutter">❄</span>
         </div>
       ))}
@@ -47,7 +45,9 @@ const FadeIn = ({ children, key }) => {
 const API_BASE = 'http://localhost:8000/api';
 
 function App() {
-  const [darkMode, setDarkMode] = useState(true);
+  // --- SETTINGS CHANGE: Light/Dark mode state is back ---
+  const [darkMode, setDarkMode] = useState(true); 
+  
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showLogin, setShowLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
@@ -56,10 +56,9 @@ function App() {
   
   // Auth State
   const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('1234'); // This is for the INPUT FIELD
+  const [password, setPassword] = useState('1234');
   const [authError, setAuthError] = useState('');
   
-  // --- PASSWORD FIX: This ref acts as our "database" ---
   const correctPasswordRef = useRef('1234');
   
   // Processing State
@@ -84,7 +83,7 @@ function App() {
   const [totalProcessedCount, setTotalProcessedCount] = useState(0); 
   const [dashboardStats, setDashboardStats] = useState({
     successRate: 0,
-    avgProcessTime: 'N/A',
+    avgProcessTime: '0s', 
     activeUsers: 0
   });
   
@@ -108,6 +107,10 @@ function App() {
   ]);
   const [showNotifications, setShowNotifications] = useState(false);
   const notificationRef = useRef(null);
+  
+  // --- User Menu (for logout) ---
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const userMenuRef = useRef(null);
 
   // --- Utilities ---
 
@@ -150,6 +153,7 @@ function App() {
     }
   }, [currentView]);
 
+  // Click away listener for popovers
   useEffect(() => {
     function handleClickOutside(event) {
       if (notificationRef.current && !notificationRef.current.contains(event.target)) {
@@ -157,10 +161,15 @@ function App() {
           setShowNotifications(false);
         }
       }
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target)) {
+        if (!event.target.closest('#user-menu-button')) {
+          setShowUserMenu(false);
+        }
+      }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [notificationRef]);
+  }, [notificationRef, userMenuRef]);
 
   // --- Auth Handlers ---
 
@@ -168,7 +177,6 @@ function App() {
     e.preventDefault();
     setAuthError('');
     
-    // --- PASSWORD FIX: Check against the ref, not a hardcoded string ---
     if (username === 'admin' && password === correctPasswordRef.current) {
       setIsAuthenticated(true);
       setShowLogin(false);
@@ -182,7 +190,6 @@ function App() {
     setIsAuthenticated(false);
     setShowLogin(true);
     setUsername('admin');
-    // --- PASSWORD FIX: Reset input field to the CURRENT correct password ---
     setPassword(correctPasswordRef.current);
     addLog('User logged out', 'info');
   };
@@ -475,11 +482,8 @@ function App() {
     
     addLog('Attempting to change password...', 'info');
     try {
-      // --- MOCK BACKEND CALL (FIXED) ---
-      // This simulates checking the password
       await new Promise((resolve, reject) => {
         setTimeout(() => {
-          // --- PASSWORD FIX: Check against the ref ---
           if (currentPassword !== correctPasswordRef.current) {
             reject(new Error('Current password is incorrect'));
           } else {
@@ -488,14 +492,15 @@ function App() {
         }, 1000);
       });
 
-      // --- PASSWORD FIX: Update the ref with the new password ---
       correctPasswordRef.current = newPassword; 
 
-      setPasswordSuccess('Password changed successfully!');
+      setPasswordSuccess('Password changed successfully! You will be logged out.');
       addLog('Password changed successfully', 'success');
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
+
+      setTimeout(handleLogout, 2000); 
 
     } catch (err) {
       setPasswordError(err.message);
@@ -525,7 +530,9 @@ function App() {
   if (showLogin) {
     return (
       <div className={`min-h-screen ${bgClass} flex items-center justify-center p-4 relative overflow-hidden`}>
-        {darkMode && <Snowfall />}
+        {/* --- SNOWFALL: No longer conditional --- */}
+        <Snowfall />
+        
         <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
           <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-cyan-600/10 rounded-full blur-3xl animate-pulse"></div>
           <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-400/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
@@ -533,7 +540,7 @@ function App() {
 
         <div className={`${cardClass} rounded-3xl shadow-2xl p-8 md:p-12 max-w-md w-full relative z-10`}>
           <div className="text-center mb-8">
-            <div className={`p-4 rounded-2xl inline-block mb-4 animate-bounce ${accentGradient}`}>
+            <div className={`p-4 rounded-2xl inline-block mb-4 ${accentGradient}`}>
               <TrendingUp className="w-12 h-12 text-white" />
             </div>
             <h1 className={`text-3xl font-bold ${textClass} mb-2`}>SnowFlow AI</h1>
@@ -607,7 +614,8 @@ function App() {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {darkMode && <Snowfall />}
+      {/* --- SNOWFALL: No longer conditional --- */}
+      <Snowfall />
 
       {/* Header */}
       <header className={`${darkMode ? 'bg-slate-900/50 border-slate-800' : 'bg-white/80 border-slate-200'} backdrop-blur-xl border-b sticky top-0 z-40`}>
@@ -643,7 +651,6 @@ function App() {
                 )}
               </button>
 
-              {/* --- NEW NOTIFICATION PANEL --- */}
               {showNotifications && (
                 <div 
                   ref={notificationRef}
@@ -673,24 +680,38 @@ function App() {
                   </div>
                 </div>
               )}
-              {/* --- END NOTIFICATION PANEL --- */}
 
+              {/* --- DARK MODE TOGGLE: Re-added --- */}
               <button
                 onClick={() => setDarkMode(!darkMode)}
                 className={`p-2 ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'} rounded-lg transition-colors`}
               >
                 {darkMode ? <Sun className="w-5 h-5 text-yellow-400" /> : <Moon className="w-5 h-5 text-slate-600" />}
               </button>
-              <div className={`flex items-center gap-2 px-3 py-2 rounded-lg ${darkMode ? 'bg-cyan-900/30' : 'bg-cyan-500/10'}`}>
-                <User className={`w-4 h-4 ${accentText}`} />
-                <span className={`text-sm font-medium ${accentText}`}>{username}</span>
+
+              {/* --- USER MENU BUTTON --- */}
+              <div className="relative" ref={userMenuRef}>
+                <button
+                  id="user-menu-button"
+                  onClick={() => setShowUserMenu(!showUserMenu)}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg ${darkMode ? 'bg-cyan-900/30' : 'bg-cyan-500/10'} transition-colors ${darkMode ? 'hover:bg-cyan-900/50' : 'hover:bg-cyan-500/20'}`}
+                >
+                  <User className={`w-4 h-4 ${accentText}`} />
+                  <span className={`text-sm font-medium ${accentText}`}>{username}</span>
+                </button>
+
+                {showUserMenu && (
+                  <div className={`${cardClass} absolute top-12 right-0 w-48 rounded-lg shadow-2xl z-50 overflow-hidden animate-fade-in-down`}>
+                    <button
+                      onClick={handleLogout}
+                      className={`w-full flex items-center gap-3 px-4 py-3 text-left ${darkMode ? 'hover:bg-red-500/30' : 'hover:bg-red-500/10'} text-red-400 transition-colors`}
+                    >
+                      <LogOut className="w-5 h-5" />
+                      <span>Logout</span>
+                    </button>
+                  </div>
+                )}
               </div>
-              <button
-                onClick={handleLogout}
-                className="p-2 hover:bg-red-500/20 rounded-lg transition-colors text-red-400"
-              >
-                <LogOut className="w-5 h-5" />
-              </button>
             </div>
           </div>
         </div>
@@ -751,7 +772,7 @@ function App() {
                 <div className="flex items-center justify-between">
                   <span className={`text-xs ${textMutedClass}`}>Success Rate</span>
                   <span className={`text-sm font-bold ${dashboardStats.successRate > 0 ? 'text-green-400' : textClass}`}>
-                    {dashboardStats.successRate > 0 ? `${dashboardStats.successRate}%` : 'N/A'}
+                    {dashboardStats.successRate > 0 ? `${dashboardStats.successRate}%` : '0%'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -874,21 +895,7 @@ function App() {
                   <p className={textMutedClass}>Configure your application preferences</p>
                 </div>
 
-                <div className={`${cardClass} rounded-2xl shadow-xl p-8`}>
-                  <h3 className={`text-xl font-semibold ${textClass} mb-4`}>Appearance</h3>
-                  <div className={`flex items-center justify-between p-4 ${darkMode ? 'bg-slate-700/50' : 'bg-slate-100/50'} rounded-xl`}>
-                    <div>
-                      <p className={`font-medium ${textClass}`}>Dark Mode</p>
-                      <p className={`text-sm ${textMutedClass}`}>Toggle dark/light theme</p>
-                    </div>
-                    <button
-                      onClick={() => setDarkMode(!darkMode)}
-                      className={`relative w-14 h-7 rounded-full transition-colors ${darkMode ? 'bg-cyan-500' : 'bg-slate-300'}`}
-                    >
-                      <div className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full transition-transform ${darkMode ? 'translate-x-7' : 'translate-x-0'}`}></div>
-                    </button>
-                  </div>
-                </div>
+                {/* --- APPEARANCE SECTION REMOVED --- */}
 
                 <div className={`${cardClass} rounded-2xl shadow-xl p-8`}>
                   <h3 className={`text-xl font-semibold ${textClass} mb-4`}>Security</h3>
@@ -1236,7 +1243,7 @@ function App() {
                   </FadeIn>
                 )}
 
-                {/* Step 5: Results */}
+                 {/* Step 5: Results */}
                 {step === 5 && results && (
                   <FadeIn key="step5">
                     <div className="space-y-6">
