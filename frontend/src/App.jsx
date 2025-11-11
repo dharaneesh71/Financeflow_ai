@@ -44,50 +44,207 @@ const FadeIn = ({ children, key }) => {
 
 const API_BASE = 'http://localhost:8000/api';
 
+// --- HOOK FOR SESSION-ONLY PERSISTENCE ---
+function useSessionState(key, defaultValue) {
+  const [state, setState] = useState(() => {
+    const persistedValue = sessionStorage.getItem(key);
+    if (persistedValue !== null) {
+      try {
+        return JSON.parse(persistedValue);
+      } catch (e) {
+        console.error("Failed to parse sessionStorage key", key, e);
+        return defaultValue;
+      }
+    }
+    return defaultValue;
+  });
+
+  useEffect(() => {
+    sessionStorage.setItem(key, JSON.stringify(state));
+  }, [key, state]);
+
+  return [state, setState];
+}
+
+// --- HOOK FOR PERMANENT PERSISTENCE ---
+function useLocalStorageState(key, defaultValue) {
+  const [state, setState] = useState(() => {
+    const persistedValue = localStorage.getItem(key);
+    if (persistedValue !== null) {
+      try {
+        return JSON.parse(persistedValue);
+      } catch (e) {
+        console.error("Failed to parse localStorage key", key, e);
+        return defaultValue;
+      }
+    }
+    return defaultValue;
+  });
+
+  useEffect(() => {
+    localStorage.setItem(key, JSON.stringify(state));
+  }, [key, state]);
+
+  return [state, setState];
+}
+
+// --- FIXED: TABLE MODAL COMPONENT ---
+const TableModal = ({ results, onClose, darkMode, textClass, textMutedClass, cardClass, headerClass, cellClass }) => {
+
+  // Robust checks for missing data
+  if (!results?.schema?.tables?.[0]) {
+    console.error("View Table: Missing schema");
+    return null;
+  }
+  
+  const table = results.schema.tables[0];
+  const headers = table.columns;
+  
+  // --- FALLBACK LOGIC ---
+  // Check if new `extracted_metrics_by_document` exists and has data
+  let dataRows = [];
+  if (results.extracted_metrics_by_document && Object.keys(results.extracted_metrics_by_document).length > 0) {
+    dataRows = Object.entries(results.extracted_metrics_by_document);
+  } 
+  // If not, fall back to the old `extracted_metrics`
+  else if (results.extracted_metrics && Object.keys(results.extracted_metrics).length > 0) {
+    // Create a fake row for the legacy data structure
+    dataRows = [["(Single Document)", results.extracted_metrics]];
+  }
+  // --- END FALLBACK ---
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-fade-in">
+      <div 
+        className={`relative w-full max-w-4xl max-h-[90vh] flex flex-col rounded-2xl shadow-2xl ${cardClass}`}
+      >
+        <div className={`flex items-center justify-between p-4 border-b ${darkMode ? 'border-slate-700' : 'border-gray-200'}`}>
+          <div className="flex items-center gap-3">
+            <Database className="text-cyan-400" />
+            <h3 className={`text-xl font-bold ${textClass}`}>
+              Preview: {table.table_name}
+            </h3>
+          </div>
+          <button 
+            onClick={onClose} 
+            className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-gray-200'}`}
+          >
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+        
+        <div className="overflow-auto p-4">
+          {dataRows.length === 0 ? (
+            <div className={`text-center p-8 ${textMutedClass}`}>
+              <AlertCircle className="w-12 h-12 mx-auto mb-4" />
+              <h4 className="text-lg font-semibold">No Data Returned</h4>
+              <p>The backend processed the files but did not return any extracted metrics.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto relative rounded-lg border border-gray-500/30">
+              <table className={`w-full text-left text-sm ${textClass}`}>
+                <thead className={`text-xs uppercase ${headerClass}`}>
+                  <tr>
+                    {headers.map((header) => (
+                      <th key={header.name} scope="col" className="px-6 py-3">
+                        {header.name.replace(/_/g, ' ')}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {dataRows.map(([docName, metrics], idx) => (
+                    <tr 
+                      key={idx} 
+                      className={`border-b ${cellClass} ${darkMode ? 'bg-slate-800/50' : 'bg-white/50'}`}
+                    >
+                      {headers.map((header) => {
+                        let cellValue = 'N/A';
+                        const lowerCaseHeader = header.name.toLowerCase();
+                        
+                        if (lowerCaseHeader === 'document_name') {
+                          cellValue = docName;
+                        } else if (metrics[lowerCaseHeader] !== undefined && metrics[lowerCaseHeader] !== null) {
+                          cellValue = String(metrics[lowerCaseHeader]);
+                        } else if (lowerCaseHeader === 'metric_id' || lowerCaseHeader === 'extraction_date') {
+                          cellValue = '(auto)'; 
+                        }
+                        
+                        return (
+                          <td key={header.name} className="px-6 py-4">
+                            {/* --- THIS WAS THE BUG: Fixed mutedText to textMutedClass --- */}
+                            {cellValue === 'N/A' ? <span className={textMutedClass}>N/A</span> : cellValue}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <div className={`p-4 border-t ${darkMode ? 'border-slate-700' : 'border-gray-200'} text-right`}>
+          <button
+            onClick={onClose}
+            className={`px-5 py-2 rounded-lg text-white bg-gradient-to-r from-blue-500 to-cyan-400 hover:from-blue-600 hover:to-cyan-500`}
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
 function App() {
-  // --- SETTINGS CHANGE: Light/Dark mode state is back ---
-  const [darkMode, setDarkMode] = useState(true); 
   
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [showLogin, setShowLogin] = useState(true);
-  const [showPassword, setShowPassword] = useState(false);
-  const [currentView, setCurrentView] = useState('home');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  // --- STATE PERSISTENCE ---
+  const [darkMode, setDarkMode] = useLocalStorageState('snowflow-darkMode', true);
+  const [isAuthenticated, setIsAuthenticated] = useSessionState('snowflow-isAuthenticated', false);
+  const [showLogin, setShowLogin] = useState(() => !isAuthenticated); 
+  const [username, setUsername] = useSessionState('snowflow-username', 'admin');
   
-  // Auth State
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('1234');
-  const [authError, setAuthError] = useState('');
+  const correctPasswordRef = useRef(
+    localStorage.getItem('snowflow-correctPassword') || '1234'
+  );
   
-  const correctPasswordRef = useRef('1234');
-  
-  // Processing State
-  const [step, setStep] = useState(1);
-  const [files, setFiles] = useState([]);
-  const [uploadedFilePaths, setUploadedFilePaths] = useState([]);
-  const [processing, setProcessing] = useState(false);
-  const [error, setError] = useState('');
-  
-  // Metric Extraction State
-  const [userPrompt, setUserPrompt] = useState('');
-  const [suggestedMetrics, setSuggestedMetrics] = useState([]);
-  const [selectedMetrics, setSelectedMetrics] = useState([]);
-  const [editingMetric, setEditingMetric] = useState(null);
-  
-  // Results/Pipeline State
-  const [results, setResults] = useState(null);
-  const [currentStage, setCurrentStage] = useState('');
-  const [progress, setProgress] = useState(0);
-  
-  // --- DYNAMIC DASHBOARD STATS ---
-  const [totalProcessedCount, setTotalProcessedCount] = useState(0); 
-  const [dashboardStats, setDashboardStats] = useState({
+  const [totalProcessedCount, setTotalProcessedCount] = useSessionState('snowflow-totalProcessedCount', 0);
+  const [dashboardStats, setDashboardStats] = useSessionState('snowflow-dashboardStats', {
     successRate: 0,
     avgProcessTime: '0s', 
     activeUsers: 0
   });
+
+  // --- TASK PERSISTENCE (Session Only) ---
+  const [step, setStep] = useSessionState('snowflow-step', 1);
+  const [files, setFiles] = useState([]); 
+  const [fileMeta, setFileMeta] = useSessionState('snowflow-fileMeta', []); 
+  const [uploadedFilePaths, setUploadedFilePaths] = useSessionState('snowflow-uploadedFilePaths', []);
+  const [userPrompt, setUserPrompt] = useSessionState('snowflow-userPrompt', '');
+  const [suggestedMetrics, setSuggestedMetrics] = useSessionState('snowflow-suggestedMetrics', []);
+  const [selectedMetrics, setSelectedMetrics] = useSessionState('snowflow-selectedMetrics', []);
+  const [results, setResults] = useSessionState('snowflow-results', null);
   
-  // Logs State
+  const [showPassword, setShowPassword] = useState(false);
+
+  const [password, setPassword] = useState(correctPasswordRef.current);
+  const [authError, setAuthError] = useState('');
+  
+  const [currentView, setCurrentView] = useState('home');
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  
+  const [processing, setProcessing] = useState(false);
+  const [error, setError] = useState('');
+  
+  const [editingMetric, setEditingMetric] = useState(null);
+  
+  const [currentStage, setCurrentStage] = useState('');
+  const [progress, setProgress] = useState(0);
+  
+  // Logs State (not persistent)
   const [logs, setLogs] = useState([]);
   const fileInputRef = useRef(null);
   const logsEndRef = useRef(null);
@@ -100,17 +257,31 @@ function App() {
   const [passwordError, setPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState('');
 
-  // --- NOTIFICATION STATE ---
+  // NOTIFICATION STATE
   const [notifications, setNotifications] = useState([
     { id: 1, text: 'Welcome to SnowFlow AI!' },
-    { id: 2, text: 'Your backend endpoint is set to localhost:8000.' },
   ]);
   const [showNotifications, setShowNotifications] = useState(false);
   const notificationRef = useRef(null);
   
-  // --- User Menu (for logout) ---
+  // User Menu (for logout)
   const [showUserMenu, setShowUserMenu] = useState(false);
   const userMenuRef = useRef(null);
+  
+  const [showTableModal, setShowTableModal] = useState(false);
+
+
+  // --- PERSISTENCE EFFECTS ---
+  useEffect(() => {
+    localStorage.setItem('snowflow-darkMode', JSON.stringify(darkMode));
+  }, [darkMode]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setShowLogin(true);
+    }
+  }, [isAuthenticated]);
+
 
   // --- Utilities ---
 
@@ -134,7 +305,6 @@ function App() {
   }, [logs]);
 
   const fetchLogs = async () => {
-    addLog('Fetching system logs...', 'info');
     try {
       const response = await fetch(`${API_BASE}/logs`);
       if (!response.ok) {
@@ -143,15 +313,15 @@ function App() {
       const data = await response.json(); 
       setLogs(prev => [...data.logs, ...prev.filter(p => !data.logs.find(l => l.id === p.id))]);
     } catch (err) {
-      addLog(`Failed to fetch logs: ${err.message}. Using welcome logs.`, 'error');
+      addLog(`Failed to fetch logs: ${err.message}.`, 'error');
     }
   };
 
   useEffect(() => {
-    if (currentView === 'logs') {
+    if (isAuthenticated && currentView === 'logs') {
       fetchLogs();
     }
-  }, [currentView]);
+  }, [currentView, isAuthenticated]); 
 
   // Click away listener for popovers
   useEffect(() => {
@@ -185,13 +355,41 @@ function App() {
       setAuthError('Invalid credentials');
     }
   };
-
+  
+  // Clears only the SESSION state (the task)
+  const resetTask = () => {
+    setStep(1);
+    setFiles([]);
+    setFileMeta([]);
+    setUploadedFilePaths([]);
+    setUserPrompt('');
+    setSuggestedMetrics([]);
+    setSelectedMetrics([]);
+    setResults(null);
+    setError('');
+    
+    // Clear only session-related task keys
+    Object.keys(sessionStorage).forEach(key => {
+      if (key.startsWith('snowflow-') && key !== 'snowflow-isAuthenticated' && key !== 'snowflow-username') {
+        sessionStorage.removeItem(key);
+      }
+    });
+    addLog('🔄 Task Reset', 'info');
+  };
+  
   const handleLogout = () => {
     setIsAuthenticated(false);
     setShowLogin(true);
-    setUsername('admin');
-    setPassword(correctPasswordRef.current);
     addLog('User logged out', 'info');
+    
+    sessionStorage.clear();
+    
+    correctPasswordRef.current = '1234';
+    localStorage.setItem('snowflow-correctPassword', '1234');
+    
+    setUsername('admin');
+    setPassword('1234');
+    resetTask(); 
   };
 
   // --- File Paste & Drag/Drop Handlers ---
@@ -206,13 +404,14 @@ function App() {
         );
         if (pastedFiles.length > 0) {
           setFiles(prev => [...prev, ...pastedFiles]);
+          setFileMeta(prev => [...prev, ...pastedFiles.map(f => ({ name: f.name, size: f.size }))]);
           addLog(`Pasted ${pastedFiles.length} file(s)`, 'info');
         }
       }
     };
     document.addEventListener('paste', handlePaste);
     return () => document.removeEventListener('paste', handlePaste);
-  }, [step]);
+  }, [step, setFileMeta]); 
 
   const handleDragOver = (e) => {
     e.preventDefault();
@@ -234,6 +433,7 @@ function App() {
     );
     if (droppedFiles.length > 0) {
       setFiles(prev => [...prev, ...droppedFiles]);
+      setFileMeta(prev => [...prev, ...droppedFiles.map(f => ({ name: f.name, size: f.size }))]);
       addLog(`Dropped ${droppedFiles.length} file(s)`, 'info');
     }
   };
@@ -244,6 +444,7 @@ function App() {
   const handleFileSelect = (e) => {
     const selectedFiles = Array.from(e.target.files);
     setFiles(prev => [...prev, ...selectedFiles]);
+    setFileMeta(prev => [...prev, ...selectedFiles.map(f => ({ name: f.name, size: f.size }))]);
     setError('');
     setResults(null);
     setStep(1);
@@ -273,7 +474,7 @@ function App() {
 
   const handleStep1 = async () => {
     if (files.length === 0) {
-      setError('Please select at least one file');
+      setError('Files not found (they may have been cleared on refresh). Please re-select your files.');
       return;
     }
     try {
@@ -294,7 +495,7 @@ function App() {
 
   const handleStep2 = async () => {
     if (uploadedFilePaths.length === 0) {
-      setError('Please upload files first');
+      setError('No files were uploaded. Please go back to Step 1.');
       return;
     }
     try {
@@ -426,7 +627,7 @@ function App() {
       setResults(result);
       setStep(5);
       
-      setTotalProcessedCount(prevCount => prevCount + files.length); 
+      setTotalProcessedCount(prevCount => prevCount + fileMeta.length); 
       setDashboardStats(prev => ({
         ...prev,
         successRate: 98.5, 
@@ -449,9 +650,9 @@ function App() {
   };
 
   // --- Step 5: Reset Handler ---
-
-  const resetForm = () => {
+  const resetAppTask = () => {
     setFiles([]);
+    setFileMeta([]);
     setUploadedFilePaths([]);
     setResults(null);
     setError('');
@@ -462,7 +663,7 @@ function App() {
     setSuggestedMetrics([]);
     setSelectedMetrics([]);
     if (fileInputRef.current) fileInputRef.current.value = '';
-    addLog('🔄 Ready for new documents', 'info');
+    addLog('🔄 Task Reset', 'info');
   };
 
   // --- Settings: Change Password (FIXED) ---
@@ -493,6 +694,7 @@ function App() {
       });
 
       correctPasswordRef.current = newPassword; 
+      localStorage.setItem('snowflow-correctPassword', newPassword); 
 
       setPasswordSuccess('Password changed successfully! You will be logged out.');
       addLog('Password changed successfully', 'success');
@@ -526,13 +728,14 @@ function App() {
   const accentText = darkMode ? 'text-cyan-300' : 'text-cyan-700';
   const accentRing = 'focus:ring-cyan-500';
 
+  const tableHeaderClass = darkMode ? 'bg-slate-800' : 'bg-gray-100';
+  const tableCellClass = darkMode ? 'border-slate-700' : 'border-gray-200';
+
   // --- Login View ---
   if (showLogin) {
     return (
       <div className={`min-h-screen ${bgClass} flex items-center justify-center p-4 relative overflow-hidden`}>
-        {/* --- SNOWFALL: No longer conditional --- */}
         <Snowfall />
-        
         <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
           <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-cyan-600/10 rounded-full blur-3xl animate-pulse"></div>
           <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-400/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
@@ -614,7 +817,6 @@ function App() {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {/* --- SNOWFALL: No longer conditional --- */}
       <Snowfall />
 
       {/* Header */}
@@ -640,6 +842,15 @@ function App() {
             </div>
             
             <div className="flex items-center gap-3 relative">
+              {/* --- NEW: RESET TASK BUTTON --- */}
+              <button 
+                onClick={resetTask}
+                title="Reset current task"
+                className={`relative p-2 ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'} rounded-lg transition-colors`}
+              >
+                <Zap className="w-5 h-5" />
+              </button>
+
               <button 
                 id="notification-button"
                 onClick={() => setShowNotifications(!showNotifications)} 
@@ -656,7 +867,7 @@ function App() {
                   ref={notificationRef}
                   className={`${cardClass} absolute top-12 right-0 w-80 rounded-lg shadow-2xl z-50 overflow-hidden animate-fade-in-down`}
                 >
-                  <div className="p-3 flex items-center justify-between border-b border-slate-700/50">
+                  <div className={`p-3 flex items-center justify-between border-b ${darkMode ? 'border-slate-700' : 'border-gray-200'}`}>
                     <h4 className="font-semibold">Notifications</h4>
                     {notifications.length > 0 && (
                       <button 
@@ -681,7 +892,7 @@ function App() {
                 </div>
               )}
 
-              {/* --- DARK MODE TOGGLE: Re-added --- */}
+              {/* --- DARK MODE TOGGLE --- */}
               <button
                 onClick={() => setDarkMode(!darkMode)}
                 className={`p-2 ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'} rounded-lg transition-colors`}
@@ -772,7 +983,7 @@ function App() {
                 <div className="flex items-center justify-between">
                   <span className={`text-xs ${textMutedClass}`}>Success Rate</span>
                   <span className={`text-sm font-bold ${dashboardStats.successRate > 0 ? 'text-green-400' : textClass}`}>
-                    {dashboardStats.successRate > 0 ? `${dashboardStats.successRate}%` : '0%'}
+                    {dashboardStats.successRate}%
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -815,7 +1026,7 @@ function App() {
                       }`}>
                         {s === 1 && 'Upload Docs'}
                         {s === 2 && 'Prompt AI'}
-                        {s === 3 && 'Review Metrics'}
+                        {s === 3 && 'Review'}
                         {s === 4 && 'Process'}
                         {s === 5 && 'Results'}
                       </p>
@@ -950,18 +1161,8 @@ function App() {
                   </form>
                 </div>
 
-                <div className={`${cardClass} rounded-2xl shadow-xl p-8`}>
-                  <h3 className={`text-xl font-semibold ${textClass} mb-4`}>API Configuration</h3>
-                  <div className={`p-4 ${darkMode ? 'bg-slate-700/50' : 'bg-slate-100/50'} rounded-xl`}>
-                    <p className={`font-medium ${textClass} mb-2`}>API Endpoint</p>
-                    <input
-                      type="text"
-                      value={API_BASE}
-                      readOnly
-                      className={`w-full px-4 py-2 rounded-lg ${darkMode ? 'bg-slate-700 text-white' : 'bg-white text-slate-900'} border ${darkMode ? 'border-slate-600' : 'border-slate-300'}`}
-                    />
-                  </div>
-                </div>
+                {/* --- API CONFIGURATION REMOVED --- */}
+                
               </div>
             </FadeIn>
           )}
@@ -998,11 +1199,11 @@ function App() {
                         <p className={textMutedClass}>You can also paste files from your clipboard</p>
                       </label>
 
-                      {files.length > 0 && (
+                      {fileMeta.length > 0 && (
                         <div className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700/50' : 'bg-slate-100/50'}`}>
-                          <p className={`${textClass} font-semibold mb-2`}>Files Selected ({files.length}):</p>
+                          <p className={`${textClass} font-semibold mb-2`}>Files Selected ({fileMeta.length}):</p>
                           <ul className="space-y-1 max-h-32 overflow-y-auto">
-                            {files.map((file, idx) => (
+                            {fileMeta.map((file, idx) => (
                               <li key={`${file.name}-${idx}`} className={`flex justify-between items-center text-sm ${textMutedClass}`}>
                                 <span>{file.name}</span>
                                 <span>{(file.size / 1024).toFixed(1)} KB</span>
@@ -1021,7 +1222,7 @@ function App() {
 
                       <button
                         onClick={handleStep1}
-                        disabled={files.length === 0 || processing}
+                        disabled={fileMeta.length === 0 || processing} 
                         className="w-full py-4 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 disabled:from-gray-600 disabled:to-gray-700 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-all shadow-lg flex items-center justify-center gap-3"
                       >
                         {processing ? (
@@ -1243,12 +1444,12 @@ function App() {
                   </FadeIn>
                 )}
 
-                 {/* Step 5: Results */}
+                {/* Step 5: Results */}
                 {step === 5 && results && (
                   <FadeIn key="step5">
                     <div className="space-y-6">
                       <div className="bg-green-500/20 backdrop-blur-lg rounded-xl p-6 border border-green-500/30">
-                        <div className="flex items-center justify-between">
+                        <div className="flex flex-wrap items-center justify-between gap-4">
                           <div className="flex items-center gap-4">
                             <CheckCircle className="w-10 h-10 text-green-400" />
                             <div>
@@ -1256,50 +1457,51 @@ function App() {
                               <p className="text-green-200">Metrics extracted and deployed.</p>
                             </div>
                           </div>
-                          <button
-                            onClick={resetForm}
-                            className="px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg transition-colors"
-                          >
-                            New Process
-                          </button>
+                          <div className="flex gap-3">
+                            <button
+                              onClick={() => setShowTableModal(true)}
+                              className={`px-4 py-2 ${accentGradient} ${accentHover} text-white font-semibold rounded-lg shadow transition-colors`}
+                            >
+                              View Table Entries
+                            </button>
+                            <button
+                              onClick={resetTask}
+                              className="px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg transition-colors"
+                            >
+                              New Process
+                            </button>
+                          </div>
                         </div>
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         {results.extracted_metrics_by_document ? (
-                          // Show results organized by document
                           Object.entries(results.extracted_metrics_by_document).map(([docName, metrics]) => (
-                            <div key={docName} className={`${darkMode ? 'bg-slate-700' : 'bg-slate-100'} p-4 rounded-xl`}>
-                              <h4 className={`font-semibold mb-2 ${textClass}`}>
-                                {docName.replace(/_/g, ' ').toUpperCase()}
+                            <div key={docName} className={`${darkMode ? 'bg-slate-800' : 'bg-slate-100'} p-4 rounded-xl shadow-lg`}>
+                              <h4 className={`font-semibold mb-3 pb-2 border-b ${darkMode ? 'border-slate-600' : 'border-slate-300'} ${textClass} truncate`}>
+                                {docName}
                               </h4>
-                              {Object.entries(metrics).map(([key, value]) => (
-                                <div key={key} className="mb-2">
-                                  <p className={textMutedClass}>
-                                    {key.replace(/_/g, ' ').toUpperCase()}
-                                  </p>
-                                  <p className={`text-lg font-bold ${accentText}`}>
-                                    {String(value)}
-                                  </p>
-                                </div>
-                              ))}
+                              <div className="space-y-2">
+                                {Object.entries(metrics).map(([key, value]) => (
+                                  <div key={key} className="flex justify-between">
+                                    <p className={textMutedClass}>{key.replace(/_/g, ' ')}:</p>
+                                    <p className={`font-bold ${accentText}`}>
+                                      {String(value)}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
                             </div>
                           ))
                         ) : (
-                          // Fallback to legacy display
-                          Object.entries(results.extracted_metrics).map(([key, value]) => (
-                            <div
-                              key={key}
-                              className={`${darkMode ? 'bg-slate-700' : 'bg-slate-100'} p-4 rounded-xl`}
-                            >
-                              <p className={textMutedClass}>
-                                {key.replace(/_/g, ' ').toUpperCase()}
-                              </p>
-                              <p className={`text-2xl font-bold ${accentText}`}>
-                                {String(value)}
-                              </p>
-                            </div>
-                          ))
+                          <div className={`${darkMode ? 'bg-slate-700' : 'bg-slate-100'} p-4 rounded-xl`}>
+                            {results.extracted_metrics && Object.entries(results.extracted_metrics).map(([key, value]) => (
+                              <div key={key} className="flex justify-between">
+                                <p className={textMutedClass}>{key.replace(/_/g, ' ').toUpperCase()}:</p>
+                                <p className={`text-lg font-bold ${accentText}`}>{String(value)}</p>
+                              </div>
+                            ))}
+                          </div>
                         )}
                       </div>
 
@@ -1379,6 +1581,20 @@ function App() {
                 </div>
               </div>
             </div>
+          )}
+
+          {/* --- NEW: TABLE MODAL RENDER --- */}
+          {showTableModal && (
+            <TableModal 
+              results={results} 
+              onClose={() => setShowTableModal(false)} 
+              darkMode={darkMode}
+              textClass={textClass}
+              textMutedClass={textMutedClass}
+              cardClass={cardClass}
+              headerClass={tableHeaderClass}
+              cellClass={tableCellClass}
+            />
           )}
         </main>
       </div>
