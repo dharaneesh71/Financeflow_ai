@@ -92,14 +92,26 @@ function useLocalStorageState(key, defaultValue) {
 const TableModal = ({ results, onClose, darkMode, textClass, textMutedClass, cardClass, headerClass, cellClass }) => {
 
   // Robust checks for missing data
-  if (!results?.schema?.tables?.[0] || !results?.extracted_metrics_by_document) {
-    console.error("View Table: Missing schema or extracted_metrics_by_document");
+  if (!results?.schema?.tables?.[0]) {
+    console.error("View Table: Missing schema");
     return null;
   }
-
+ 
   const table = results.schema.tables[0];
   const headers = table.columns;
-  const dataRows = Object.entries(results.extracted_metrics_by_document);
+ 
+  // --- FALLBACK LOGIC ---
+  // Check if new `extracted_metrics_by_document` exists and has data
+  let dataRows = [];
+  if (results.extracted_metrics_by_document && Object.keys(results.extracted_metrics_by_document).length > 0) {
+    dataRows = Object.entries(results.extracted_metrics_by_document);
+  } 
+  // If not, fall back to the old `extracted_metrics`
+  else if (results.extracted_metrics && Object.keys(results.extracted_metrics).length > 0) {
+    // Create a fake row for the legacy data structure
+    dataRows = [["(Single Document)", results.extracted_metrics]];
+  }
+  // --- END FALLBACK ---
 
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-fade-in">
@@ -120,49 +132,57 @@ const TableModal = ({ results, onClose, darkMode, textClass, textMutedClass, car
             <X className="w-6 h-6" />
           </button>
         </div>
-        
+       
         <div className="overflow-auto p-4">
-          <div className="overflow-x-auto relative rounded-lg border border-gray-500/30">
-            <table className={`w-full text-left text-sm ${textClass}`}>
-              <thead className={`text-xs uppercase ${headerClass}`}>
-                <tr>
-                  {headers.map((header) => (
-                    <th key={header.name} scope="col" className="px-6 py-3">
-                      {header.name.replace(/_/g, ' ')}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {dataRows.map(([docName, metrics], idx) => (
-                  <tr 
-                    key={idx} 
-                    className={`border-b ${cellClass} ${darkMode ? 'bg-slate-800/50' : 'bg-white/50'}`}
-                  >
-                    {headers.map((header) => {
-                      let cellValue = 'N/A';
-                      const lowerCaseHeader = header.name.toLowerCase();
-                      
-                      if (lowerCaseHeader === 'document_name') {
-                        cellValue = docName;
-                      } else if (metrics[lowerCaseHeader] !== undefined && metrics[lowerCaseHeader] !== null) {
-                        cellValue = String(metrics[lowerCaseHeader]);
-                      } else if (lowerCaseHeader === 'metric_id' || lowerCaseHeader === 'extraction_date') {
-                        cellValue = '(auto)'; 
-                      }
-                      
-                      return (
-                        <td key={header.name} className="px-6 py-4">
-                          {/* --- THIS WAS THE BUG: Fixed mutedText to textMutedClass --- */}
-                          {cellValue === 'N/A' ? <span className={textMutedClass}>N/A</span> : cellValue}
-                        </td>
-                      );
-                    })}
+          {dataRows.length === 0 ? (
+            <div className={`text-center p-8 ${textMutedClass}`}>
+              <AlertCircle className="w-12 h-12 mx-auto mb-4" />
+              <h4 className="text-lg font-semibold">No Data Returned</h4>
+              <p>The backend processed the files but did not return any extracted metrics.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto relative rounded-lg border border-gray-500/30">
+              <table className={`w-full text-left text-sm ${textClass}`}>
+                <thead className={`text-xs uppercase ${headerClass}`}>
+                  <tr>
+                    {headers.map((header) => (
+                      <th key={header.name} scope="col" className="px-6 py-3">
+                        {header.name.replace(/_/g, ' ')}
+                      </th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {dataRows.map(([docName, metrics], idx) => (
+                    <tr 
+                      key={idx} 
+                      className={`border-b ${cellClass} ${darkMode ? 'bg-slate-800/50' : 'bg-white/50'}`}
+                    >
+                      {headers.map((header) => {
+                        let cellValue = 'N/A';
+                        const lowerCaseHeader = header.name.toLowerCase();
+                       
+                        if (lowerCaseHeader === 'document_name') {
+                          cellValue = docName;
+                        } else if (metrics[lowerCaseHeader] !== undefined && metrics[lowerCaseHeader] !== null) {
+                          cellValue = String(metrics[lowerCaseHeader]);
+                        } else if (lowerCaseHeader === 'metric_id' || lowerCaseHeader === 'extraction_date') {
+                          cellValue = '(auto)'; 
+                        }
+                       
+                        return (
+                          <td key={header.name} className="px-6 py-4">
+                            {/* --- THIS WAS THE BUG: Fixed mutedText to textMutedClass --- */}
+                            {cellValue === 'N/A' ? <span className={textMutedClass}>N/A</span> : cellValue}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
         <div className={`p-4 border-t ${darkMode ? 'border-slate-700' : 'border-gray-200'} text-right`}>
@@ -180,17 +200,17 @@ const TableModal = ({ results, onClose, darkMode, textClass, textMutedClass, car
 
 
 function App() {
-  
+ 
   // --- STATE PERSISTENCE ---
   const [darkMode, setDarkMode] = useLocalStorageState('snowflow-darkMode', true);
   const [isAuthenticated, setIsAuthenticated] = useSessionState('snowflow-isAuthenticated', false);
   const [showLogin, setShowLogin] = useState(() => !isAuthenticated); 
   const [username, setUsername] = useSessionState('snowflow-username', 'admin');
-  
+ 
   const correctPasswordRef = useRef(
     localStorage.getItem('snowflow-correctPassword') || '1234'
   );
-  
+ 
   const [totalProcessedCount, setTotalProcessedCount] = useSessionState('snowflow-totalProcessedCount', 0);
   const [dashboardStats, setDashboardStats] = useSessionState('snowflow-dashboardStats', {
     successRate: 0,
@@ -207,23 +227,23 @@ function App() {
   const [suggestedMetrics, setSuggestedMetrics] = useSessionState('snowflow-suggestedMetrics', []);
   const [selectedMetrics, setSelectedMetrics] = useSessionState('snowflow-selectedMetrics', []);
   const [results, setResults] = useSessionState('snowflow-results', null);
-  
+ 
   const [showPassword, setShowPassword] = useState(false);
 
   const [password, setPassword] = useState(correctPasswordRef.current);
   const [authError, setAuthError] = useState('');
-  
+ 
   const [currentView, setCurrentView] = useState('home');
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  
+ 
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState('');
-  
+ 
   const [editingMetric, setEditingMetric] = useState(null);
-  
+ 
   const [currentStage, setCurrentStage] = useState('');
   const [progress, setProgress] = useState(0);
-  
+ 
   // Logs State (not persistent)
   const [logs, setLogs] = useState([]);
   const fileInputRef = useRef(null);
@@ -243,11 +263,11 @@ function App() {
   ]);
   const [showNotifications, setShowNotifications] = useState(false);
   const notificationRef = useRef(null);
-  
+ 
   // User Menu (for logout)
   const [showUserMenu, setShowUserMenu] = useState(false);
   const userMenuRef = useRef(null);
-  
+ 
   const [showTableModal, setShowTableModal] = useState(false);
 
 
@@ -326,7 +346,7 @@ function App() {
   const handleLogin = (e) => {
     e.preventDefault();
     setAuthError('');
-    
+   
     if (username === 'admin' && password === correctPasswordRef.current) {
       setIsAuthenticated(true);
       setShowLogin(false);
@@ -335,7 +355,7 @@ function App() {
       setAuthError('Invalid credentials');
     }
   };
-  
+ 
   // Clears only the SESSION state (the task)
   const resetTask = () => {
     setStep(1);
@@ -347,7 +367,8 @@ function App() {
     setSelectedMetrics([]);
     setResults(null);
     setError('');
-    
+   
+    // Clear only session-related task keys
     Object.keys(sessionStorage).forEach(key => {
       if (key.startsWith('snowflow-') && key !== 'snowflow-isAuthenticated' && key !== 'snowflow-username') {
         sessionStorage.removeItem(key);
@@ -355,17 +376,17 @@ function App() {
     });
     addLog('🔄 Task Reset', 'info');
   };
-  
+ 
   const handleLogout = () => {
     setIsAuthenticated(false);
     setShowLogin(true);
     addLog('User logged out', 'info');
-    
+   
     sessionStorage.clear();
-    
+   
     correctPasswordRef.current = '1234';
     localStorage.setItem('snowflow-correctPassword', '1234');
-    
+   
     setUsername('admin');
     setPassword('1234');
     resetTask(); 
@@ -434,7 +455,7 @@ function App() {
     const formData = new FormData();
     files.forEach(file => formData.append('files', file));
     addLog('📤 Uploading files to server...', 'info');
-    
+   
     const response = await fetch(`${API_BASE}/upload`, {
       method: 'POST',
       body: formData,
@@ -444,7 +465,7 @@ function App() {
       const errorText = await response.text();
       throw new Error(`Upload failed: ${errorText}`);
     }
-    
+   
     const result = await response.json();
     setUploadedFilePaths(result.files);
     addLog(`✅ Upload complete: ${result.files.length} file(s)`, 'success');
@@ -497,7 +518,7 @@ function App() {
       }
 
       const result = await response.json();
-      
+     
       if (result.suggested_metrics && result.suggested_metrics.length > 0) {
         setSuggestedMetrics(result.suggested_metrics);
         setSelectedMetrics(result.suggested_metrics);
@@ -567,24 +588,24 @@ function App() {
       setProgress(10);
       addLog('📄 Extracting markdown (LandingAI)...', 'info');
       await new Promise(resolve => setTimeout(resolve, 500)); 
-      
+     
       setCurrentStage('Step 2: Metrics Suggested');
       setProgress(20);
       await new Promise(resolve => setTimeout(resolve, 200)); 
-      
+     
       setCurrentStage('Step 3: Review Complete');
       setProgress(30);
       await new Promise(resolve => setTimeout(resolve, 200)); 
-      
+     
       setCurrentStage('Step 4: Extracting Metrics');
       setProgress(40);
       addLog('🔍 Extracting metrics (Gemini)...', 'info');
       await new Promise(resolve => setTimeout(resolve, 500)); 
-      
+     
       setCurrentStage('Step 5: Deploying to Snowflake');
       setProgress(60);
       addLog('❄️ Deploying to Snowflake...', 'info');
-      
+     
       const response = await fetch(`${API_BASE}/process`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -605,14 +626,14 @@ function App() {
       setCurrentStage('Complete');
       setResults(result);
       setStep(5);
-      
+     
       setTotalProcessedCount(prevCount => prevCount + fileMeta.length); 
       setDashboardStats(prev => ({
         ...prev,
         successRate: 98.5, 
         avgProcessTime: '2.3s', 
       }));
-      
+     
       addLog('✅ Processing complete!', 'success');
       addLog(`✅ Created ${result.schema?.tables?.length || 0} tables`, 'success');
       addLog(`✅ Loaded ${result.deployment?.rows_loaded || 0} rows`, 'success');
@@ -659,7 +680,7 @@ function App() {
       setPasswordError('New password must be at least 4 characters');
       return;
     }
-    
+   
     addLog('Attempting to change password...', 'info');
     try {
       await new Promise((resolve, reject) => {
@@ -694,20 +715,19 @@ function App() {
   const bgClass = darkMode 
     ? 'bg-gradient-to-br from-gray-900 via-blue-950 to-gray-900' 
     : 'bg-gradient-to-br from-slate-50 to-blue-100';
-  
+ 
   const cardClass = darkMode
     ? 'bg-slate-900/50 backdrop-blur-lg border border-blue-900/50'
     : 'bg-white/70 backdrop-blur-lg border border-gray-200 shadow-sm';
-  
+ 
   const textClass = darkMode ? 'text-white' : 'text-slate-900';
   const textMutedClass = darkMode ? 'text-slate-400' : 'text-slate-600';
-  
+ 
   const accentGradient = 'bg-gradient-to-r from-blue-500 to-cyan-400';
   const accentHover = 'hover:from-blue-600 hover:to-cyan-500';
   const accentText = darkMode ? 'text-cyan-300' : 'text-cyan-700';
   const accentRing = 'focus:ring-cyan-500';
 
-  // Dynamic cell classes for the table
   const tableHeaderClass = darkMode ? 'bg-slate-800' : 'bg-gray-100';
   const tableCellClass = darkMode ? 'border-slate-700' : 'border-gray-200';
 
@@ -820,7 +840,7 @@ function App() {
                 </div>
               </div>
             </div>
-            
+           
             <div className="flex items-center gap-3 relative">
               {/* --- NEW: RESET TASK BUTTON --- */}
               <button 
@@ -923,7 +943,7 @@ function App() {
               <Home className="w-5 h-5" />
               <span className="font-medium">Dashboard & Process</span>
             </button>
-            
+           
             <button
               onClick={() => setCurrentView('logs')}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
@@ -938,7 +958,7 @@ function App() {
                 <span className="ml-auto bg-cyan-500 text-white text-xs px-2 py-0.5 rounded-full">{logs.length}</span>
               )}
             </button>
-            
+           
             <button
               onClick={() => setCurrentView('settings')}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
@@ -1142,7 +1162,7 @@ function App() {
                 </div>
 
                 {/* --- API CONFIGURATION REMOVED --- */}
-                
+               
               </div>
             </FadeIn>
           )}
@@ -1152,7 +1172,7 @@ function App() {
               {/* Dynamic Step Content */}
               <div className={`${cardClass} rounded-2xl shadow-2xl p-8`}>
                 <h2 className={`text-3xl font-bold ${textClass} mb-6`}>Document Extraction Pipeline</h2>
-                
+               
                 {/* Step 1: Upload */}
                 {step === 1 && (
                   <FadeIn key="step1">
@@ -1230,7 +1250,7 @@ function App() {
                         <h3 className={`text-xl font-semibold ${textClass}`}>Define Extraction Goals</h3>
                         <p className={textMutedClass}>Provide a prompt for the AI to suggest relevant metrics.</p>
                       </div>
-                      
+                       
                       <div>
                         <label className={`block ${textClass} font-medium mb-2`}>Your Prompt (Optional)</label>
                         <textarea
@@ -1406,7 +1426,7 @@ function App() {
                     </div>
                   </FadeIn>
                 )}
-                
+               
                 {/* Step 4: Processing */}
                 {step === 4 && processing && (
                   <FadeIn key="step4">
@@ -1461,26 +1481,38 @@ function App() {
                               <h4 className={`font-semibold mb-3 pb-2 border-b ${darkMode ? 'border-slate-600' : 'border-slate-300'} ${textClass} truncate`}>
                                 {docName}
                               </h4>
+                              {/* --- START: FIX --- */}
                               <div className="space-y-2">
                                 {Object.entries(metrics).map(([key, value]) => (
-                                  <div key={key} className="flex justify-between">
-                                    <p className={textMutedClass}>{key.replace(/_/g, ' ')}:</p>
-                                    <p className={`font-bold ${accentText}`}>
+                                  <div key={key} className="grid grid-cols-3 gap-4 items-start">
+                                    <p className={`${textMutedClass} col-span-1 break-words capitalize`}>
+                                      {key.replace(/_/g, ' ')}:
+                                    </p>
+                                    <p className={`font-bold ${accentText} col-span-2 text-right break-words`}>
                                       {String(value)}
                                     </p>
                                   </div>
                                 ))}
                               </div>
+                              {/* --- END: FIX --- */}
                             </div>
                           ))
                         ) : (
                           <div className={`${darkMode ? 'bg-slate-700' : 'bg-slate-100'} p-4 rounded-xl`}>
-                            {results.extracted_metrics && Object.entries(results.extracted_metrics).map(([key, value]) => (
-                              <div key={key} className="flex justify-between">
-                                <p className={textMutedClass}>{key.replace(/_/g, ' ').toUpperCase()}:</p>
-                                <p className={`text-lg font-bold ${accentText}`}>{String(value)}</p>
-                              </div>
-                            ))}
+                            {/* --- START: FIX (for legacy fallback) --- */}
+                            <div className="space-y-2">
+                              {results.extracted_metrics && Object.entries(results.extracted_metrics).map(([key, value]) => (
+                                <div key={key} className="grid grid-cols-3 gap-4 items-start">
+                                  <p className={`${textMutedClass} col-span-1 break-words capitalize`}>
+                                    {key.replace(/_/g, ' ')}:
+                                  </p>
+                                  <p className={`font-bold ${accentText} col-span-2 text-right break-words`}>
+                                    {String(value)}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                             {/* --- END: FIX --- */}
                           </div>
                         )}
                       </div>
@@ -1502,7 +1534,7 @@ function App() {
               </div>
             </div>
           )}
-        
+       
           {/* Edit Metric Modal */}
           {editingMetric && (
             <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
