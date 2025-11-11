@@ -209,7 +209,7 @@ class SnowflakeDeployer:
             columns_str = ", ".join(column_names)
             
             insert_sql = f"INSERT INTO EXTRACTED_METRICS ({columns_str}) VALUES ({placeholders})"
-            
+            print("insert_sql-->", insert_sql)
             # Prepare values
             values = [document_name or "unknown"]
             for metric in metrics:
