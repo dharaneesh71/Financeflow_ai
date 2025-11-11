@@ -92,26 +92,14 @@ function useLocalStorageState(key, defaultValue) {
 const TableModal = ({ results, onClose, darkMode, textClass, textMutedClass, cardClass, headerClass, cellClass }) => {
 
   // Robust checks for missing data
-  if (!results?.schema?.tables?.[0]) {
-    console.error("View Table: Missing schema");
+  if (!results?.schema?.tables?.[0] || !results?.extracted_metrics_by_document) {
+    console.error("View Table: Missing schema or extracted_metrics_by_document");
     return null;
   }
-  
+
   const table = results.schema.tables[0];
   const headers = table.columns;
-  
-  // --- FALLBACK LOGIC ---
-  // Check if new `extracted_metrics_by_document` exists and has data
-  let dataRows = [];
-  if (results.extracted_metrics_by_document && Object.keys(results.extracted_metrics_by_document).length > 0) {
-    dataRows = Object.entries(results.extracted_metrics_by_document);
-  } 
-  // If not, fall back to the old `extracted_metrics`
-  else if (results.extracted_metrics && Object.keys(results.extracted_metrics).length > 0) {
-    // Create a fake row for the legacy data structure
-    dataRows = [["(Single Document)", results.extracted_metrics]];
-  }
-  // --- END FALLBACK ---
+  const dataRows = Object.entries(results.extracted_metrics_by_document);
 
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-fade-in">
@@ -134,55 +122,47 @@ const TableModal = ({ results, onClose, darkMode, textClass, textMutedClass, car
         </div>
         
         <div className="overflow-auto p-4">
-          {dataRows.length === 0 ? (
-            <div className={`text-center p-8 ${textMutedClass}`}>
-              <AlertCircle className="w-12 h-12 mx-auto mb-4" />
-              <h4 className="text-lg font-semibold">No Data Returned</h4>
-              <p>The backend processed the files but did not return any extracted metrics.</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto relative rounded-lg border border-gray-500/30">
-              <table className={`w-full text-left text-sm ${textClass}`}>
-                <thead className={`text-xs uppercase ${headerClass}`}>
-                  <tr>
-                    {headers.map((header) => (
-                      <th key={header.name} scope="col" className="px-6 py-3">
-                        {header.name.replace(/_/g, ' ')}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {dataRows.map(([docName, metrics], idx) => (
-                    <tr 
-                      key={idx} 
-                      className={`border-b ${cellClass} ${darkMode ? 'bg-slate-800/50' : 'bg-white/50'}`}
-                    >
-                      {headers.map((header) => {
-                        let cellValue = 'N/A';
-                        const lowerCaseHeader = header.name.toLowerCase();
-                        
-                        if (lowerCaseHeader === 'document_name') {
-                          cellValue = docName;
-                        } else if (metrics[lowerCaseHeader] !== undefined && metrics[lowerCaseHeader] !== null) {
-                          cellValue = String(metrics[lowerCaseHeader]);
-                        } else if (lowerCaseHeader === 'metric_id' || lowerCaseHeader === 'extraction_date') {
-                          cellValue = '(auto)'; 
-                        }
-                        
-                        return (
-                          <td key={header.name} className="px-6 py-4">
-                            {/* --- THIS WAS THE BUG: Fixed mutedText to textMutedClass --- */}
-                            {cellValue === 'N/A' ? <span className={textMutedClass}>N/A</span> : cellValue}
-                          </td>
-                        );
-                      })}
-                    </tr>
+          <div className="overflow-x-auto relative rounded-lg border border-gray-500/30">
+            <table className={`w-full text-left text-sm ${textClass}`}>
+              <thead className={`text-xs uppercase ${headerClass}`}>
+                <tr>
+                  {headers.map((header) => (
+                    <th key={header.name} scope="col" className="px-6 py-3">
+                      {header.name.replace(/_/g, ' ')}
+                    </th>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                </tr>
+              </thead>
+              <tbody>
+                {dataRows.map(([docName, metrics], idx) => (
+                  <tr 
+                    key={idx} 
+                    className={`border-b ${cellClass} ${darkMode ? 'bg-slate-800/50' : 'bg-white/50'}`}
+                  >
+                    {headers.map((header) => {
+                      let cellValue = 'N/A';
+                      const lowerCaseHeader = header.name.toLowerCase();
+                      
+                      if (lowerCaseHeader === 'document_name') {
+                        cellValue = docName;
+                      } else if (metrics[lowerCaseHeader] !== undefined && metrics[lowerCaseHeader] !== null) {
+                        cellValue = String(metrics[lowerCaseHeader]);
+                      } else if (lowerCaseHeader === 'metric_id' || lowerCaseHeader === 'extraction_date') {
+                        cellValue = '(auto)'; 
+                      }
+                      
+                      return (
+                        <td key={header.name} className="px-6 py-4">
+                          {/* --- THIS WAS THE BUG: Fixed mutedText to textMutedClass --- */}
+                          {cellValue === 'N/A' ? <span className={textMutedClass}>N/A</span> : cellValue}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <div className={`p-4 border-t ${darkMode ? 'border-slate-700' : 'border-gray-200'} text-right`}>
@@ -368,7 +348,6 @@ function App() {
     setResults(null);
     setError('');
     
-    // Clear only session-related task keys
     Object.keys(sessionStorage).forEach(key => {
       if (key.startsWith('snowflow-') && key !== 'snowflow-isAuthenticated' && key !== 'snowflow-username') {
         sessionStorage.removeItem(key);
@@ -728,6 +707,7 @@ function App() {
   const accentText = darkMode ? 'text-cyan-300' : 'text-cyan-700';
   const accentRing = 'focus:ring-cyan-500';
 
+  // Dynamic cell classes for the table
   const tableHeaderClass = darkMode ? 'bg-slate-800' : 'bg-gray-100';
   const tableCellClass = darkMode ? 'border-slate-700' : 'border-gray-200';
 
