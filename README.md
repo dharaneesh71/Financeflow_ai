@@ -2,6 +2,17 @@
 
 An AI-powered financial document processing platform that automatically extracts, analyzes, and structures financial data from various document formats, and ingests it into Snowflake. Built for hackathons and enterprise financial data processing workflows.
 
+
+
+<object width="425" height="350">
+  <param name="movie" value="[http://www.youtube.com/user/wwwLoveWatercom?v=BTRN1YETpyg](https://www.youtube.com/watch?v=rbdXRPEVgTU)" />
+  <param name="wmode" value="transparent" />
+  <embed src="[http://www.youtube.com/user/wwwLoveWatercom?v=BTRN1YETpyg](https://www.youtube.com/watch?v=rbdXRPEVgTU)"
+         type="application/x-shockwave-flash"
+         wmode="transparent" width="425" height="350" />
+</object>
+
+
 ## 🚀 Features
 
 - **Document Processing**: Extract text and data from PDFs, images, and financial statements
