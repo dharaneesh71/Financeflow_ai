@@ -2,6 +2,11 @@
 
 An AI-powered financial document processing platform that automatically extracts, analyzes, and structures financial data from various document formats, and ingests it into Snowflake. Built for hackathons and enterprise financial data processing workflows.
 
+## 🧠 SnowFlow AI Dashboard
+![SnowFlow AI Dashboard](./assets/snowflow-dashboard.jpeg)
+
+[![YouTube Video](https://img.shields.io/badge/YouTube-Video-red?logo=youtube&logoColor=white)](https://www.youtube.com/watch?v=rbdXRPEVgTU)
+
 ## 🚀 Features
 
 - **Document Processing**: Extract text and data from PDFs, images, and financial statements
