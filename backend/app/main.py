@@ -1,12 +1,12 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List, Optional, Dict, Any
+from typing import List, Dict, Any
 import os
 import shutil
 from pathlib import Path
 import traceback
-
-from app.agents.orchestrator import FinancePipeline, MetricExtractionPipeline, PipelineState, MetricState
+from datetime import time
+from app.agents.orchestrator import FinancePipeline, MetricExtractionPipeline, MetricState
 from app.models import (
     ProcessRequest, ProcessResponse,
     SuggestMetricsRequest, SuggestMetricsResponse, MetricDefinition,
@@ -418,21 +418,21 @@ async def add_log_entry(request: Dict[str, Any]):
             "type": request.get("type", "info"),
             "timestamp": request.get("timestamp", "")
         }
-        logs_store.append(log_entry)
-        # Keep only last 1000 logs to prevent memory issues
-        if len(logs_store) > 1000:
-            logs_store.pop(0)
-        return {"success": True}
+        # logs_store.append(log_entry)
+        # # Keep only last 1000 logs to prevent memory issues
+        # if len(logs_store) > 1000:
+        #     logs_store.pop(0)
+        # return {"success": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to add log: {str(e)}")
 
-@app.get("/api/logs")
-async def get_logs():
-    """Get all log entries"""
-    try:
-        return {"logs": logs_store}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch logs: {str(e)}")
+# @app.get("/api/logs")
+# async def get_logs():
+#     """Get all log entries"""
+#     try:
+#         return {"logs": logs_store}
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"Failed to fetch logs: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

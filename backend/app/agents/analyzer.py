@@ -3,7 +3,6 @@ from typing import Dict, Any, List
 import google.generativeai as genai
 from app.models import ExtractionResult, FinancialInsight
 from app.config import get_settings
-
 settings = get_settings()
 
 class FinancialAnalyzer:
@@ -32,36 +31,36 @@ class FinancialAnalyzer:
             
             prompt = f"""You are a financial data analyst. Analyze this extracted financial data and provide insights.
 
-DATA:
-{json.dumps(extracted_data, indent=2)}
+            DATA:
+            {json.dumps(extracted_data, indent=2)}
 
-Provide your analysis in ONLY valid JSON format (no markdown, no explanations before or after):
-{{
-  "document_type": "balance_sheet or income_statement or cash_flow",
-  "time_period": "quarterly or annual",
-  "fiscal_year": 2024,
-  "fiscal_quarter": 3,
-  "detected_relationships": [
-    {{
-      "type": "calculation",
-      "formula": "Total Assets = Current Assets + Fixed Assets",
-      "components_present": true
-    }}
-  ],
-  "suggested_metrics": ["Current Ratio", "Quick Ratio", "Debt-to-Equity Ratio", "Working Capital"],
-  "data_quality": {{
-    "completeness": 0.95,
-    "consistency_score": 0.92
-  }},
-  "issues": ["list any data quality issues found"],
-  "insights": [
-    "Key financial insight 1",
-    "Key financial insight 2",
-    "Key financial insight 3"
-  ]
-}}
+            Provide your analysis in ONLY valid JSON format (no markdown, no explanations before or after):
+            {{
+            "document_type": "balance_sheet or income_statement or cash_flow",
+            "time_period": "quarterly or annual",
+            "fiscal_year": 2024,
+            "fiscal_quarter": 3,
+            "detected_relationships": [
+                {{
+                "type": "calculation",
+                "formula": "Total Assets = Current Assets + Fixed Assets",
+                "components_present": true
+                }}
+            ],
+            "suggested_metrics": ["Current Ratio", "Quick Ratio", "Debt-to-Equity Ratio", "Working Capital"],
+            "data_quality": {{
+                "completeness": 0.95,
+                "consistency_score": 0.92
+            }},
+            "issues": ["list any data quality issues found"],
+            "insights": [
+                "Key financial insight 1",
+                "Key financial insight 2",
+                "Key financial insight 3"
+            ]
+            }}
 
-Analyze the numbers, identify patterns, calculate key ratios, and provide meaningful financial insights."""
+            Analyze the numbers, identify patterns, calculate key ratios, and provide meaningful financial insights."""
             
             print(f"  🤖 Calling Gemini AI (gemini-2.0-flash-exp)...")
             response = self.model.generate_content(prompt)
