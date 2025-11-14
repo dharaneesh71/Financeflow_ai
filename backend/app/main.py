@@ -6,13 +6,8 @@ import shutil
 from pathlib import Path
 import traceback
 from datetime import time
-from app.agents.orchestrator import FinancePipeline, MetricExtractionPipeline, MetricState
-from app.models import (
-    ProcessRequest, ProcessResponse,
-    SuggestMetricsRequest, SuggestMetricsResponse, MetricDefinition,
-    ExtractMetricsRequest, ExtractMetricsResponse,
-    ExtractMarkdownRequest, ExtractMarkdownResponse
-)
+from app.agents.orchestrator import MetricExtractionPipeline, MetricState
+from app.models import ProcessRequest, ProcessResponse, MetricDefinition
 from app.config import get_settings
 
 app = FastAPI(title="FinanceFlow AI", version="1.0.0")
@@ -37,17 +32,16 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 finance_pipeline = None
 metric_pipeline = None
 
-def get_pipelines():
+def get_pipeline():
     """Lazy initialization of LangGraph pipelines"""
     global finance_pipeline, metric_pipeline
     
     if finance_pipeline is None:
-        print("\n🚀 Initializing LangGraph Pipelines...")
-        finance_pipeline = FinancePipeline()
+        print("\n🚀 Initializing LangGraph Pipeline...")
         metric_pipeline = MetricExtractionPipeline()
-        print("✅ All pipelines initialized\n")
+        print("✅ Pipeline initialized\n")
     
-    return finance_pipeline, metric_pipeline
+    return metric_pipeline
 
 @app.on_event("startup")
 async def startup_event():
@@ -55,7 +49,7 @@ async def startup_event():
     print("\n" + "="*60)
     print("🚀 FinanceFlow AI Backend Starting...")
     print("="*60 + "\n")
-    get_pipelines()
+    get_pipeline()
     print("✅ Backend ready at http://localhost:8000")
     print("📚 API Docs at http://localhost:8000/docs\n")
 
@@ -71,7 +65,7 @@ async def root():
 @app.get("/health")
 async def health():
     """Detailed health check"""
-    fin_pipe, met_pipe = get_pipelines()
+    met_pipe = get_pipeline()
     return {
         "status": "healthy",
         "pipelines": {
@@ -113,6 +107,7 @@ async def upload_files(files: List[UploadFile] = File(...)):
         "files": uploaded_files
     }
 
+
 @app.post("/api/process", response_model=ProcessResponse)
 async def process_documents(request: ProcessRequest):
     """Process uploaded financial documents through LangGraph MetricExtractionPipeline"""
@@ -133,7 +128,7 @@ async def process_documents(request: ProcessRequest):
                 raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
         
         # Get pipeline
-        _, metric_pipe = get_pipelines()
+        metric_pipe = get_pipeline()
         
         # Determine workflow: if selected_metrics provided, use "process" branch, else "suggest" branch
         has_selected_metrics = request.selected_metrics and len(request.selected_metrics) > 0
@@ -248,165 +243,6 @@ async def process_documents(request: ProcessRequest):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
 
-@app.post("/api/extract-markdown", response_model=ExtractMarkdownResponse)
-async def extract_markdown(request: ExtractMarkdownRequest):
-    """Extract markdown from a document file"""
-    
-    print(f"\n{'='*60}")
-    print(f"📄 MARKDOWN EXTRACTION REQUEST")
-    print(f"{'='*60}")
-    print(f"File path: {request.file_path}")
-    print(f"Output directory: {request.output_dir}")
-    print()
-    
-    try:
-        # Check if file exists
-        if not os.path.exists(request.file_path):
-            raise HTTPException(status_code=404, detail=f"File not found: {request.file_path}")
-        
-        # Use extractor directly for this granular endpoint
-        from app.agents.extractor import DocumentExtractor
-        extractor = DocumentExtractor()
-        markdown_path = await extractor.extract_markdown_from_document(
-            file_path=request.file_path,
-            output_dir=request.output_dir or settings.upload_dir
-        )
-        
-        print(f"✅ Markdown extraction complete\n")
-        
-        return ExtractMarkdownResponse(
-            markdown_path=markdown_path
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"\n{'='*60}")
-        print(f"❌ ERROR: {str(e)}")
-        print(f"{'='*60}\n")
-        traceback.print_exc()
-        return ExtractMarkdownResponse(
-            markdown_path="",
-            error=str(e)
-        )
-
-@app.post("/api/suggest-metrics", response_model=SuggestMetricsResponse)
-async def suggest_metrics(request: SuggestMetricsRequest):
-    """Suggest metrics that can be extracted from a markdown file"""
-    
-    print(f"\n{'='*60}")
-    print(f"💡 METRIC SUGGESTION REQUEST")
-    print(f"{'='*60}")
-    print(f"Markdown path: {request.markdown_path}")
-    if request.user_prompt:
-        print(f"User prompt: {request.user_prompt}")
-    print()
-    
-    try:
-        # Check if markdown file exists
-        if not os.path.exists(request.markdown_path):
-            raise HTTPException(status_code=404, detail=f"Markdown file not found: {request.markdown_path}")
-        
-        # Use extractor directly for this granular endpoint
-        from app.agents.extractor import DocumentExtractor
-        extractor = DocumentExtractor()
-        
-        # Suggest metrics
-        result = await extractor.suggest_metrics_from_markdown(
-            markdown_path=request.markdown_path,
-            user_prompt=request.user_prompt
-        )
-        
-        # Convert to response model
-        if result.get("error"):
-            return SuggestMetricsResponse(
-                suggested_metrics=[],
-                error=result.get("error")
-            )
-        
-        # Convert metrics to MetricDefinition objects
-        metrics = [
-            MetricDefinition(**metric)
-            for metric in result.get("suggested_metrics", [])
-        ]
-        
-        print(f"✅ Suggested {len(metrics)} metrics\n")
-        
-        return SuggestMetricsResponse(
-            suggested_metrics=metrics,
-            reasoning=result.get("reasoning")
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"\n{'='*60}")
-        print(f"❌ ERROR: {str(e)}")
-        print(f"{'='*60}\n")
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Metric suggestion failed: {str(e)}")
-
-@app.post("/api/extract-metrics", response_model=ExtractMetricsResponse)
-async def extract_metrics(request: ExtractMetricsRequest):
-    """Extract metrics from a markdown file using LandingAI ADE"""
-    
-    print(f"\n{'='*60}")
-    print(f"🔍 METRIC EXTRACTION REQUEST")
-    print(f"{'='*60}")
-    print(f"Markdown path: {request.markdown_path}")
-    print(f"Metrics to extract: {len(request.metrics)}")
-    for metric in request.metrics:
-        print(f"  - {metric.name} ({metric.type}): {metric.description}")
-    print()
-    
-    try:
-        # Check if markdown file exists
-        if not os.path.exists(request.markdown_path):
-            raise HTTPException(status_code=404, detail=f"Markdown file not found: {request.markdown_path}")
-        
-        # Use extractor directly for this granular endpoint
-        from app.agents.extractor import DocumentExtractor
-        extractor = DocumentExtractor()
-        
-        # Convert MetricDefinition to dict for extractor
-        metrics_dict = [
-            {
-                "name": metric.name,
-                "type": metric.type,
-                "description": metric.description
-            }
-            for metric in request.metrics
-        ]
-        
-        # Extract metrics
-        result = await extractor.extract_metrics_from_markdown(
-            markdown_path=request.markdown_path,
-            metrics=metrics_dict,
-            model=request.model
-        )
-        
-        if result.get("error"):
-            return ExtractMetricsResponse(
-                extraction={},
-                metrics=request.metrics,
-                error=result.get("error")
-            )
-        
-        print(f"✅ Extraction complete\n")
-        
-        return ExtractMetricsResponse(
-            extraction=result.get("extraction", {}),
-            metrics=request.metrics
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"\n{'='*60}")
-        print(f"❌ ERROR: {str(e)}")
-        print(f"{'='*60}\n")
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Metric extraction failed: {str(e)}")
 
 @app.post("/api/logs")
 async def add_log_entry(request: Dict[str, Any]):

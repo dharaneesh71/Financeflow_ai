@@ -32,7 +32,7 @@ class SnowflakeDeployer:
         """Deploy schema and load data to Snowflake"""
         
         if not self.use_snowflake:
-            return self._mock_deployment(schema, extraction_results, extracted_metrics, metrics)
+            raise ValueError("Snowflake credentials not configured - configure credentials for database deployment")
         
         # If we have extracted metrics, use metrics deployment
         if extracted_metrics and metrics:
@@ -48,7 +48,7 @@ class SnowflakeDeployer:
     async def create_schema_if_not_exists(self, schema: DatabaseSchema) -> DeploymentResult:
         """Create database, schema and tables once (not per document)"""
         if not self.use_snowflake:
-            return self._mock_schema_creation(schema)
+            raise ValueError("Snowflake credentials not configured - configure credentials for database deployment")
         
         try:
             print(f"  📡 Connecting to Snowflake for schema creation...")
@@ -100,7 +100,7 @@ class SnowflakeDeployer:
             print(f"  ❌ Schema creation error: {e}")
             import traceback
             traceback.print_exc()
-            return self._mock_schema_creation(schema)
+            raise ValueError("  ❌ Schema creation error: for database deployment")
     
     async def insert_metrics_row(
         self,
@@ -110,7 +110,7 @@ class SnowflakeDeployer:
     ) -> int:
         """Insert a single row of metrics data (call this for each document)"""
         if not self.use_snowflake:
-            return 1
+            raise ValueError("Snowflake credentials not configured - configure credentials for database deployment")
         
         try:
             print(f"  📊 Inserting metrics for document: {document_name}")
@@ -242,7 +242,7 @@ class SnowflakeDeployer:
             print(f"  ❌ Deployment error: {e}")
             import traceback
             traceback.print_exc()
-            return self._mock_deployment(schema, None, extracted_metrics, metrics)
+            raise ValueError("  ❌ Deployment error: for database deployment")
     
     async def _deploy_standard(
         self,
@@ -345,48 +345,5 @@ class SnowflakeDeployer:
             )
         except Exception as e:
             print(f"  ❌ Schema deployment error: {e}")
-            return self._mock_deployment(schema, None, None, None)
+            raise ValueError("  ❌ Schema deployment error: for database deployment")
     
-    def _mock_deployment(
-        self, 
-        schema: DatabaseSchema, 
-        extraction_results: Optional[List[ExtractionResult]] = None,
-        extracted_metrics: Optional[Dict[str, Any]] = None,
-        metrics: Optional[List[Dict[str, Any]]] = None
-    ) -> DeploymentResult:
-        """Mock deployment for demo/testing"""
-        
-        tables_created = len(schema.tables)
-        
-        if extracted_metrics:
-            rows_loaded = 1
-        elif extraction_results:
-            rows_loaded = sum(len(r.extracted_fields) for r in extraction_results)
-        else:
-            rows_loaded = 0
-        
-        print(f"  ✅ Mock deployment complete")
-        print(f"     Tables: {tables_created}")
-        print(f"     Rows: {rows_loaded}")
-        
-        return DeploymentResult(
-            tables_created=tables_created,
-            rows_loaded=rows_loaded,
-            database=settings.snowflake_database or "FINANCIAL_DATA",
-            schema=settings.snowflake_schema or "PUBLIC",
-            status="success (mock - configure Snowflake for real deployment)"
-        )
-    
-    def _mock_schema_creation(self, schema: DatabaseSchema) -> DeploymentResult:
-        """Mock schema creation"""
-        tables_created = len(schema.tables)
-        print(f"  ✅ Mock schema creation complete")
-        print(f"     Tables: {tables_created}")
-        
-        return DeploymentResult(
-            tables_created=tables_created,
-            rows_loaded=0,
-            database=settings.snowflake_database,
-            schema=settings.snowflake_schema,
-            status="schema_created"
-        )

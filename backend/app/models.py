@@ -88,36 +88,3 @@ class ProcessResponse(BaseModel):
     analysis: Optional[FinancialInsight] = None  # Legacy field for compatibility
     reasoning: Optional[str] = None  # Reasoning for metric suggestions
     success: Optional[bool] = True  # Success flag
-
-class SuggestMetricsRequest(BaseModel):
-    """Request to suggest metrics from markdown"""
-    markdown_path: str
-    user_prompt: Optional[str] = None
-
-class SuggestMetricsResponse(BaseModel):
-    """Response with suggested metrics"""
-    suggested_metrics: List[MetricDefinition]
-    reasoning: Optional[str] = None
-    error: Optional[str] = None
-
-class ExtractMetricsRequest(BaseModel):
-    """Request to extract metrics from markdown"""
-    markdown_path: str
-    metrics: List[MetricDefinition]
-    model: str = "extract-latest"
-
-class ExtractMetricsResponse(BaseModel):
-    """Response with extracted metrics"""
-    extraction: Dict[str, Any]
-    metrics: List[MetricDefinition]
-    error: Optional[str] = None
-
-class ExtractMarkdownRequest(BaseModel):
-    """Request to extract markdown from a document"""
-    file_path: str
-    output_dir: Optional[str] = "./"
-
-class ExtractMarkdownResponse(BaseModel):
-    """Response with markdown file path"""
-    markdown_path: str
-    error: Optional[str] = None

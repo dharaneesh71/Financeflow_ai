@@ -12,128 +12,12 @@ from app.models import (
 )
 
 from app.agents.extractor import DocumentExtractor
-from app.agents.analyzer import FinancialAnalyzer
 from app.agents.schema_designer import SchemaDesigner
 from app.agents.snowflake_deployer import SnowflakeDeployer
 
 settings = get_settings()
 
-# --- ORIGINAL FINANCIAL STATEMENT PIPELINE ---
-
-class PipelineState(TypedDict):
-    """State for the original financial statement processing pipeline"""
-    file_paths: List[str]
-    extraction_results: List[ExtractionResult]
-    analysis: FinancialInsight
-    schema: DatabaseSchema
-    deployment_result: DeploymentResult
-    error: str
-    database_name: str
-    schema_name: str
-    user_prompt: str  
-    selected_metrics: List[Dict[str, Any]]
-    markdown_paths: List[str]
-    stop_after: str
-
-class FinancePipeline:
-    """
-    Original orchestrator for end-to-end financial statement processing.
-    """
-    
-    def __init__(self):
-        self.extractor = DocumentExtractor()
-        self.analyzer = FinancialAnalyzer()
-        self.designer = SchemaDesigner()
-        self.deployer = SnowflakeDeployer()
-        self.app = self.build_graph()
-
-    def build_graph(self):
-        workflow = StateGraph(PipelineState)
-        workflow.add_node("extract_documents", self.extract_documents_node)
-        workflow.add_node("analyze_data", self.analyze_data_node)
-        workflow.add_node("design_schema", self.design_schema_node)
-        workflow.add_node("deploy_to_snowflake", self.deploy_to_snowflake_node)
-        workflow.set_entry_point("extract_documents")
-        
-        workflow.add_conditional_edges(
-            "extract_documents",
-            self.should_continue_after_extract,
-            {
-                "continue": "analyze_data",
-                "stop": END
-            }
-        )
-        workflow.add_conditional_edges(
-            "analyze_data",
-            self.should_continue_after_analyze,
-            {
-                "continue": "design_schema",
-                "stop": END
-            }
-        )
-        workflow.add_conditional_edges(
-            "design_schema",
-            self.should_continue_after_schema,
-            {
-                "continue": "deploy_to_snowflake",
-                "stop": END
-            }
-        )
-        workflow.add_edge("deploy_to_snowflake", END)
-        return workflow.compile()
-    
-    def should_continue_after_extract(self, state: PipelineState) -> str:
-        stop_after = state.get("stop_after", "all")
-        if stop_after == "extract":
-            return "stop"
-        return "continue"
-    
-    def should_continue_after_analyze(self, state: PipelineState) -> str:
-        stop_after = state.get("stop_after", "all")
-        if stop_after == "analyze":
-            return "stop"
-        return "continue"
-    
-    def should_continue_after_schema(self, state: PipelineState) -> str:
-        stop_after = state.get("stop_after", "all")
-        if stop_after == "schema":
-            return "stop"
-        return "continue"
-
-    async def extract_documents_node(self, state: PipelineState) -> dict:
-        print("--- (LangGraph) 1. Starting Document Extraction ---")
-        file_paths = state["file_paths"]
-        extraction_results = []
-        for file_path in file_paths:
-            result = await self.extractor.extract_from_document(file_path)
-            extraction_results.append(result)
-        return {"extraction_results": extraction_results}
-
-    async def analyze_data_node(self, state: PipelineState) -> dict:
-        print("--- (LangGraph) 2. Starting Financial Analysis ---")
-        analysis = await self.analyzer.analyze(state["extraction_results"])
-        return {"analysis": analysis}
-
-    async def design_schema_node(self, state: PipelineState) -> dict:
-        print("--- (LangGraph) 3. Starting Schema Design ---")
-        schema = await self.designer.design_schema(
-            extraction_results=state["extraction_results"],
-            analysis=state["analysis"]
-        )
-        return {"schema": schema}
-
-    async def deploy_to_snowflake_node(self, state: PipelineState) -> dict:
-        print("--- (LangGraph) 4. Starting Snowflake Deployment ---")
-        deployment_result = await self.deployer.deploy(
-            schema=state["schema"],
-            extraction_results=state["extraction_results"]
-        )
-        return {"deployment_result": deployment_result}
-    
-    async def run(self, *args, **kwargs) -> PipelineState:
-        pass 
-
-# --- NEW: METRIC EXTRACTION PIPELINE (FOR UI) ---
+# --- METRIC EXTRACTION PIPELINE (FOR UI) ---
 
 class MetricState(TypedDict):
     """

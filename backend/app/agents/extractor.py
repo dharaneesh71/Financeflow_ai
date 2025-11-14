@@ -87,7 +87,7 @@ class DocumentExtractor:
         """Extract financial data from a document"""
         
         if not self.use_landingai:
-            return self._mock_extraction(file_path)
+            raise ValueError("LandingAI API not available - configure API key for document extraction")
         
         try:
             # Use the LandingAI ADE client to parse the document
@@ -97,8 +97,7 @@ class DocumentExtractor:
             )
 
             if not response.markdown:
-                print("No 'markdown' field found in the response")
-                return self._mock_extraction(file_path)
+                raise ValueError("No markdown content extracted from document")
             
             markdown_content = response.markdown
             print(f"  ✅ Extracted markdown ({len(markdown_content)} chars)")
@@ -108,11 +107,9 @@ class DocumentExtractor:
                 try:
                     result_json = await self._extract_structured_data_from_markdown(markdown_content)
                 except Exception as e:
-                    print(f"  ⚠️  Error parsing markdown with Gemini: {e}")
-                    return self._mock_extraction(file_path)
+                    raise ValueError(f"Failed to parse markdown with Gemini: {e}")
             else:
-                print("  ⚠️  Gemini not available, using mock data")
-                return self._mock_extraction(file_path)
+                raise ValueError("Gemini API not available - configure API key for data parsing")
             
             # Build ExtractionResult from parsed JSON
             fields = [ExtractedField(**field) for field in result_json.get('extracted_fields', [])]
@@ -131,41 +128,38 @@ class DocumentExtractor:
             )
             
         except Exception as e:
-            print(f"  ⚠️  Extraction error: {e}, using mock data")
-            import traceback
-            traceback.print_exc()
-            return self._mock_extraction(file_path)
+            raise ValueError(f"Document extraction failed: {e}")
     
     async def _extract_structured_data_from_markdown(self, markdown_content: str) -> Dict[str, Any]:
         """Extract structured financial data from markdown using Gemini"""
         
         prompt = f"""Analyze this financial document markdown and extract ALL numerical data.
 
-Return ONLY valid JSON in this exact format (no markdown, no explanations):
-{{
-  "document_type": "balance_sheet",
-  "period": "Q3 2024",
-  "extracted_fields": [
-    {{
-      "field_name": "Cash",
-      "value": 25000.00,
-      "confidence": 0.98,
-      "data_type": "currency"
-    }},
-    {{
-      "field_name": "Accounts Receivable",
-      "value": 50000.00,
-      "confidence": 0.96,
-      "data_type": "currency"
-    }}
-  ]
-}}
+        Return ONLY valid JSON in this exact format (no markdown, no explanations):
+        {{
+        "document_type": "balance_sheet",
+        "period": "Q3 2024",
+        "extracted_fields": [
+            {{
+            "field_name": "Cash",
+            "value": 25000.00,
+            "confidence": 0.98,
+            "data_type": "currency"
+            }},
+            {{
+            "field_name": "Accounts Receivable",
+            "value": 50000.00,
+            "confidence": 0.96,
+            "data_type": "currency"
+            }}
+        ]
+        }}
 
-Extract EVERY financial line item you can find with its numerical value.
+        Extract EVERY financial line item you can find with its numerical value.
 
-Markdown content:
-{markdown_content[:5000]}
-"""
+        Markdown content:
+        {markdown_content[:5000]}
+        """
         
         # Use asyncio.to_thread to run the synchronous Gemini API call in a thread pool
         import asyncio
@@ -179,27 +173,27 @@ Markdown content:
         """Build the prompt for LandingAI"""
         return """Analyze this financial document and extract ALL numerical data.
 
-Return ONLY valid JSON in this exact format (no markdown, no explanations):
-{
-  "document_type": "balance_sheet",
-  "period": "Q3 2024",
-  "extracted_fields": [
-    {
-      "field_name": "Cash",
-      "value": 25000.00,
-      "confidence": 0.98,
-      "data_type": "currency"
-    },
-    {
-      "field_name": "Accounts Receivable",
-      "value": 50000.00,
-      "confidence": 0.96,
-      "data_type": "currency"
-    }
-  ]
-}
+        Return ONLY valid JSON in this exact format (no markdown, no explanations):
+        {
+        "document_type": "balance_sheet",
+        "period": "Q3 2024",
+        "extracted_fields": [
+            {
+            "field_name": "Cash",
+            "value": 25000.00,
+            "confidence": 0.98,
+            "data_type": "currency"
+            },
+            {
+            "field_name": "Accounts Receivable",
+            "value": 50000.00,
+            "confidence": 0.96,
+            "data_type": "currency"
+            }
+        ]
+        }
 
-Extract EVERY financial line item you can find with its numerical value."""
+        Extract EVERY financial line item you can find with its numerical value."""
     
     def _parse_json_response(self, text: str) -> Dict[str, Any]:
         """Parse JSON from LandingAI response"""
@@ -228,52 +222,6 @@ Extract EVERY financial line item you can find with its numerical value."""
         }
         return doc_type_map.get(doc_type_str.lower(), DocumentType.UNKNOWN)
     
-    def _mock_extraction(self, file_path: str) -> ExtractionResult:
-        """Mock extraction for demo/testing"""
-        filename = os.path.basename(file_path).lower()
-        
-        # Detect document type from filename
-        if 'income' in filename or 'profit' in filename or 'p&l' in filename:
-            doc_type = DocumentType.INCOME_STATEMENT
-            fields = [
-                ExtractedField(field_name="Revenue", value=523456.78, confidence=0.98, data_type="currency"),
-                ExtractedField(field_name="Cost of Goods Sold", value=210000.00, confidence=0.96, data_type="currency"),
-                ExtractedField(field_name="Gross Profit", value=313456.78, confidence=0.97, data_type="currency"),
-                ExtractedField(field_name="Operating Expenses", value=125000.00, confidence=0.95, data_type="currency"),
-                ExtractedField(field_name="Net Income", value=188456.78, confidence=0.97, data_type="currency"),
-            ]
-        elif 'cash' in filename:
-            doc_type = DocumentType.CASH_FLOW
-            fields = [
-                ExtractedField(field_name="Operating Cash Flow", value=150000.00, confidence=0.98, data_type="currency"),
-                ExtractedField(field_name="Investing Cash Flow", value=-50000.00, confidence=0.96, data_type="currency"),
-                ExtractedField(field_name="Financing Cash Flow", value=-25000.00, confidence=0.95, data_type="currency"),
-                ExtractedField(field_name="Net Cash Flow", value=75000.00, confidence=0.97, data_type="currency"),
-            ]
-        else:
-            doc_type = DocumentType.BALANCE_SHEET
-            fields = [
-                ExtractedField(field_name="Cash", value=25000.00, confidence=0.98, data_type="currency"),
-                ExtractedField(field_name="Accounts Receivable", value=50000.00, confidence=0.96, data_type="currency"),
-                ExtractedField(field_name="Inventory", value=20000.00, confidence=0.95, data_type="currency"),
-                ExtractedField(field_name="Total Current Assets", value=95000.00, confidence=0.97, data_type="currency"),
-                ExtractedField(field_name="Fixed Assets", value=108200.00, confidence=0.96, data_type="currency"),
-                ExtractedField(field_name="Total Assets", value=203200.00, confidence=0.98, data_type="currency"),
-                ExtractedField(field_name="Accounts Payable", value=5000.00, confidence=0.95, data_type="currency"),
-                ExtractedField(field_name="Total Liabilities", value=131250.00, confidence=0.97, data_type="currency"),
-                ExtractedField(field_name="Owner's Equity", value=71950.00, confidence=0.96, data_type="currency"),
-            ]
-        
-        return ExtractionResult(
-            document_type=doc_type,
-            period="Q3 2024",
-            extracted_fields=fields,
-            metadata={
-                'source': 'mock',
-                'file': os.path.basename(file_path),
-                'note': 'Using mock data - configure LandingAI API key for real extraction'
-            }
-        )
     
     async def suggest_metrics_from_markdown(
         self, 
