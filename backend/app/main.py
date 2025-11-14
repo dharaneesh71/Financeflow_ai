@@ -5,7 +5,8 @@ import os
 import shutil
 from pathlib import Path
 import traceback
-from datetime import time
+from datetime import time  # <-- Keep this import
+import time # <-- Import the time module
 from app.agents.orchestrator import MetricExtractionPipeline, MetricState
 from app.models import ProcessRequest, ProcessResponse, MetricDefinition
 from app.config import get_settings
@@ -31,6 +32,48 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 # Initialize pipelines
 finance_pipeline = None
 metric_pipeline = None
+
+# Analysis agent (lazy initialization)
+analysis_agent = None
+
+# --- NEW: In-memory store for logs ---
+# This list will store your logs
+logs_store: List[Dict[str, Any]] = []
+# --- END NEW ---
+
+def get_analysis_agent():
+    """Lazy initialization of analysis agent"""
+    global analysis_agent
+    if analysis_agent is None:
+        from app.agents.analysis_agent import AnalysisAgent
+        analysis_agent = AnalysisAgent()
+    return analysis_agent
+
+@app.post("/api/analysis/query")
+async def analyze_query(request: Dict[str, Any]):
+    """Analyze user query and return insights"""
+    try:
+        agent = get_analysis_agent()
+        result = await agent.analyze_query(
+            user_query=request.get("query", ""),
+            conversation_history=request.get("conversation_history", [])
+        )
+        return result
+    except Exception as e:
+        print(f"Analysis error: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+
+@app.get("/api/analysis/metadata")
+async def get_analysis_metadata():
+    """Get available companies, metrics, and tables"""
+    try:
+        agent = get_analysis_agent()
+        metadata = await agent.get_available_data()
+        return metadata
+    except Exception as e:
+        print(f"Metadata error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch metadata: {str(e)}")
 
 def get_pipeline():
     """Lazy initialization of LangGraph pipelines"""
@@ -244,6 +287,7 @@ async def process_documents(request: ProcessRequest):
         raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
 
 
+# --- FIXED: This function now works ---
 @app.post("/api/logs")
 async def add_log_entry(request: Dict[str, Any]):
     """Add a new log entry"""
@@ -254,21 +298,24 @@ async def add_log_entry(request: Dict[str, Any]):
             "type": request.get("type", "info"),
             "timestamp": request.get("timestamp", "")
         }
-        # logs_store.append(log_entry)
-        # # Keep only last 1000 logs to prevent memory issues
-        # if len(logs_store) > 1000:
-        #     logs_store.pop(0)
-        # return {"success": True}
+        logs_store.append(log_entry)
+        # Keep only last 1000 logs to prevent memory issues
+        if len(logs_store) > 1000:
+            logs_store.pop(0)
+            
+        return {"success": True} # <-- This return statement fixes the 500 error
+    
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to add log: {str(e)}")
 
-# @app.get("/api/logs")
-# async def get_logs():
-#     """Get all log entries"""
-#     try:
-#         return {"logs": logs_store}
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=f"Failed to fetch logs: {str(e)}")
+# --- NEW: This function fixes the 405 error ---
+@app.get("/api/logs")
+async def get_logs():
+    """Get all log entries"""
+    try:
+        return {"logs": logs_store}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch logs: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

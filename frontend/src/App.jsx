@@ -5,11 +5,18 @@ import {
   Activity, X, Sparkles, Edit, Trash2, Plus, 
   ArrowRight, ArrowLeft, LogOut, User, Home, Settings,
   Clock, Zap, Shield, Menu, Bell, Eye, 
-  EyeOff, Lock, Mail, BarChart3
+  EyeOff, Lock, Mail, BarChart3, // <-- NEW: Added BarChart3
+  MessageSquare, Send // <-- NEW: Added chat icons
 } from 'lucide-react';
+// --- NEW: Import charting components ---
+import {
+  ResponsiveContainer, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
+  CartesianGrid, XAxis, YAxis, Tooltip, Legend
+} from 'recharts';
 
 // --- SNOWFALL COMPONENT (v2) ---
 const Snowfall = () => {
+  // ... (Your existing Snowfall component code... no changes)
   const snowflakeCount = 50; 
   return (
     <div className="snowfall-container" aria-hidden="true">
@@ -46,6 +53,7 @@ const API_BASE = 'http://localhost:8000/api';
 
 // --- HOOK FOR SESSION-ONLY PERSISTENCE ---
 function useSessionState(key, defaultValue) {
+  // ... (Your existing useSessionState hook... no changes)
   const [state, setState] = useState(() => {
     const persistedValue = sessionStorage.getItem(key);
     if (persistedValue !== null) {
@@ -68,6 +76,7 @@ function useSessionState(key, defaultValue) {
 
 // --- HOOK FOR PERMANENT PERSISTENCE ---
 function useLocalStorageState(key, defaultValue) {
+  // ... (Your existing useLocalStorageState hook... no changes)
   const [state, setState] = useState(() => {
     const persistedValue = localStorage.getItem(key);
     if (persistedValue !== null) {
@@ -90,8 +99,7 @@ function useLocalStorageState(key, defaultValue) {
 
 // --- FIXED: TABLE MODAL COMPONENT ---
 const TableModal = ({ results, onClose, darkMode, textClass, textMutedClass, cardClass, headerClass, cellClass }) => {
-
-  // Robust checks for missing data
+  // ... (Your existing TableModal component code... no changes)
   if (!results?.schema?.tables?.[0]) {
     console.error("View Table: Missing schema");
     return null;
@@ -100,18 +108,13 @@ const TableModal = ({ results, onClose, darkMode, textClass, textMutedClass, car
   const table = results.schema.tables[0];
   const headers = table.columns;
  
-  // --- FALLBACK LOGIC ---
-  // Check if new `extracted_metrics_by_document` exists and has data
   let dataRows = [];
   if (results.extracted_metrics_by_document && Object.keys(results.extracted_metrics_by_document).length > 0) {
     dataRows = Object.entries(results.extracted_metrics_by_document);
   } 
-  // If not, fall back to the old `extracted_metrics`
   else if (results.extracted_metrics && Object.keys(results.extracted_metrics).length > 0) {
-    // Create a fake row for the legacy data structure
     dataRows = [["(Single Document)", results.extracted_metrics]];
   }
-  // --- END FALLBACK ---
 
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-fade-in">
@@ -172,7 +175,6 @@ const TableModal = ({ results, onClose, darkMode, textClass, textMutedClass, car
                        
                         return (
                           <td key={header.name} className="px-6 py-4">
-                            {/* --- THIS WAS THE BUG: Fixed mutedText to textMutedClass --- */}
                             {cellValue === 'N/A' ? <span className={textMutedClass}>N/A</span> : cellValue}
                           </td>
                         );
@@ -198,6 +200,198 @@ const TableModal = ({ results, onClose, darkMode, textClass, textMutedClass, car
   );
 };
 
+// --- NEW: Chart Rendering Component (FIXED) ---
+const RenderAnalysisChart = ({ chart, darkMode, textMutedClass, accentText }) => {
+  if (!chart || !chart.data || chart.data.length === 0) {
+    return (
+      <div className={`p-4 text-center ${textMutedClass}`}>
+        No data returned for this chart.
+      </div>
+    );
+  }
+
+  const { chart_type, title, x_axis, y_axis, series, data } = chart;
+  const strokeColor = darkMode ? '#94a3b8' : '#64748b';
+  const COLORS = ['#0ea5e9', '#06b6d4', '#14b8a6', '#f59e0b', '#ef4444'];
+  
+  // Clean up company names (remove file paths and extensions)
+  const cleanCompanyName = (name) => {
+    if (!name) return name;
+    // Remove file paths (uploads\, .pdf, etc)
+    let cleaned = name.replace(/^.*[\\\/]/, ''); // Remove path
+    cleaned = cleaned.replace(/\.(pdf|png|jpg|jpeg)$/i, ''); // Remove extensions
+    // If it looks like a document ID, keep it as is
+    return cleaned;
+  };
+
+  // --- NEW: Function to shorten labels for the X-axis ---
+  const formatXAxisTick = (tick) => {
+    if (typeof tick !== 'string') return tick;
+    // Specific shortening rules
+    if (tick.includes("COURSERA")) return "Coursera";
+    if (tick.includes("Alphabet")) return "Alphabet";
+    if (tick.includes("Apple")) return "Apple";
+    if (tick.includes("Microsoft")) return "Microsoft";
+    
+    // Generic shortening rule
+    if (tick.length > 15) {
+      return `${tick.substring(0, 12)}...`;
+    }
+    return tick;
+  };
+  
+  // Clean data for display
+  const cleanedData = data.map(row => {
+    const newRow = { ...row };
+    if (newRow[x_axis]) {
+      newRow[x_axis] = cleanCompanyName(newRow[x_axis]);
+    }
+    if (newRow.COMPANY_NAME) {
+      newRow.COMPANY_NAME = cleanCompanyName(newRow.COMPANY_NAME);
+    }
+    if (newRow.DOCUMENT_NAME) {
+      newRow.DOCUMENT_NAME = cleanCompanyName(newRow.DOCUMENT_NAME);
+    }
+    return newRow;
+  });
+
+  // --- Safety check if cleanedData is empty or first row is missing ---
+  if (cleanedData.length === 0) {
+      return (
+      <div className={`p-4 text-center ${textMutedClass}`}>
+        No data to display after cleaning.
+      </div>
+    );
+  }
+  // --- End safety check ---
+
+  return (
+    <div className="h-80 w-full">
+      <h4 className={`text-lg font-semibold mb-4 text-center ${accentText}`}>{title}</h4>
+      <ResponsiveContainer width="100%" height="100%">
+        {chart_type === 'bar' && (
+          <BarChart data={cleanedData}>
+            <CartesianGrid strokeDasharray="3 3" stroke={strokeColor} opacity={0.3} />
+            {/* --- MODIFIED XAXIS --- */}
+            <XAxis 
+              dataKey={x_axis} 
+              stroke={strokeColor} 
+              interval={0} 
+              angle={-45} 
+              textAnchor="end" 
+              height={70} 
+              tickFormatter={formatXAxisTick} 
+            />
+            {/* --- END MODIFICATION --- */}
+            <YAxis stroke={strokeColor} />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: darkMode ? '#0f172a' : '#ffffff',
+                borderColor: darkMode ? '#334155' : '#e2e8f0',
+                borderRadius: '0.5rem',
+              }}
+            />
+            <Legend />
+            {series.length > 0 ? (
+              series.map((s, idx) => (
+                <Bar key={s} dataKey={s} fill={COLORS[idx % COLORS.length]} />
+              ))
+            ) : (
+              <Bar dataKey={y_axis} fill={COLORS[0]} />
+            )}
+          </BarChart>
+        )}
+
+        {chart_type === 'line' && (
+          <LineChart data={cleanedData}>
+            <CartesianGrid strokeDasharray="3 3" stroke={strokeColor} opacity={0.3} />
+            {/* --- MODIFIED XAXIS --- */}
+            <XAxis 
+              dataKey={x_axis} 
+              stroke={strokeColor} 
+              interval={0} 
+              angle={-45} 
+              textAnchor="end" 
+              height={70} 
+              tickFormatter={formatXAxisTick} 
+            />
+            {/* --- END MODIFICATION --- */}
+            <YAxis stroke={strokeColor} />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: darkMode ? '#0f172a' : '#ffffff',
+                borderColor: darkMode ? '#334155' : '#e2e8f0',
+                borderRadius: '0.5rem',
+              }}
+            />
+            <Legend />
+            {series.length > 0 ? (
+              series.map((s, idx) => (
+                <Line key={s} type="monotone" dataKey={s} stroke={COLORS[idx % COLORS.length]} />
+              ))
+            ) : (
+              <Line type="monotone" dataKey={y_axis} stroke={COLORS[0]} />
+            )}
+          </LineChart>
+        )}
+
+        {chart_type === 'pie' && (
+          <PieChart>
+            <Pie
+              data={cleanedData} 
+              dataKey={y_axis}
+              nameKey={x_axis}
+              cx="50%"
+              cy="50%"
+              outerRadius={100}
+              fill="#8884d8"
+              label
+            >
+              {cleanedData.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+              ))}
+            </Pie>
+            <Tooltip
+              contentStyle={{
+                backgroundColor: darkMode ? '#0f172a' : '#ffffff',
+                borderColor: darkMode ? '#334155' : '#e2e8f0',
+                borderRadius: '0.5rem',
+              }}
+            />
+            <Legend />
+          </PieChart>
+        )}
+        
+        {chart_type === 'table' && (
+          <div className="overflow-auto h-full relative rounded-lg border border-gray-500/30">
+            <table className="w-full text-left text-sm">
+              <thead className={`text-xs uppercase ${darkMode ? 'bg-slate-800' : 'bg-gray-100'}`}>
+                <tr>
+                  {cleanedData.length > 0 && Object.keys(cleanedData[0]).map((key) => (
+                    <th key={key} scope="col" className="px-6 py-3">
+                      {key.replace(/_/g, ' ')}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {cleanedData.map((row, idx) => (
+                  <tr key={idx} className={`border-b ${darkMode ? 'border-slate-700' : 'border-gray-200'} ${darkMode ? 'bg-slate-800/50' : 'bg-white/50'}`}>
+                    {Object.values(row).map((val, i) => (
+                      <td key={i} className="px-6 py-4">
+                        {String(val)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </ResponsiveContainer>
+    </div>
+  );
+};
 
 function App() {
  
@@ -233,7 +427,8 @@ function App() {
   const [password, setPassword] = useState(correctPasswordRef.current);
   const [authError, setAuthError] = useState('');
  
-  const [currentView, setCurrentView] = useState('home');
+  // --- NEW: Default to 'home' instead of 'analysis'
+  const [currentView, setCurrentView] = useState('home'); 
   const [sidebarOpen, setSidebarOpen] = useState(true);
  
   const [processing, setProcessing] = useState(false);
@@ -269,10 +464,20 @@ function App() {
   const userMenuRef = useRef(null);
  
   const [showTableModal, setShowTableModal] = useState(false);
+  
+  // --- NEW: Analysis Dashboard State ---
+  const [analysisQuery, setAnalysisQuery] = useState('');
+  const [analysisHistory, setAnalysisHistory] = useSessionState('snowflow-analysisHistory', []);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisError, setAnalysisError] = useState('');
+  const [availableData, setAvailableData] = useSessionState('snowflow-availableData', { companies: [], metrics: [], tables: [] });
+  const analysisEndRef = useRef(null);
+  // --- END NEW ---
 
 
   // --- PERSISTENCE EFFECTS ---
   useEffect(() => {
+    // ... (Your existing useEffects... no changes)
     localStorage.setItem('snowflow-darkMode', JSON.stringify(darkMode));
   }, [darkMode]);
 
@@ -286,6 +491,7 @@ function App() {
   // --- Utilities ---
 
   const addLog = async (message, type = 'info') => {
+    // ... (Your existing addLog function... no changes)
     const timestamp = new Date().toLocaleTimeString();
     const newLog = { timestamp, message, type, id: Date.now() };
     setLogs(prev => [...prev, newLog]);
@@ -303,8 +509,14 @@ function App() {
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [logs]);
+  
+  // --- NEW: Scroll for analysis chat ---
+  useEffect(() => {
+    analysisEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [analysisHistory]);
 
   const fetchLogs = async () => {
+    // ... (Your existing fetchLogs function... no changes)
     try {
       const response = await fetch(`${API_BASE}/logs`);
       if (!response.ok) {
@@ -325,6 +537,7 @@ function App() {
 
   // Click away listener for popovers
   useEffect(() => {
+    // ... (Your existing click away listener... no changes)
     function handleClickOutside(event) {
       if (notificationRef.current && !notificationRef.current.contains(event.target)) {
         if (!event.target.closest('#notification-button')) {
@@ -344,6 +557,7 @@ function App() {
   // --- Auth Handlers ---
 
   const handleLogin = (e) => {
+    // ... (Your existing handleLogin function... no changes)
     e.preventDefault();
     setAuthError('');
    
@@ -358,6 +572,7 @@ function App() {
  
   // Clears only the SESSION state (the task)
   const resetTask = () => {
+    // ... (Your existing resetTask function... no changes)
     setStep(1);
     setFiles([]);
     setFileMeta([]);
@@ -368,7 +583,6 @@ function App() {
     setResults(null);
     setError('');
    
-    // Clear only session-related task keys
     Object.keys(sessionStorage).forEach(key => {
       if (key.startsWith('snowflow-') && key !== 'snowflow-isAuthenticated' && key !== 'snowflow-username') {
         sessionStorage.removeItem(key);
@@ -378,6 +592,7 @@ function App() {
   };
  
   const handleLogout = () => {
+    // ... (Your existing handleLogout function... no changes)
     setIsAuthenticated(false);
     setShowLogin(true);
     addLog('User logged out', 'info');
@@ -395,6 +610,7 @@ function App() {
   // --- File Paste & Drag/Drop Handlers ---
 
   useEffect(() => {
+    // ... (Your existing paste handler... no changes)
     const handlePaste = (e) => {
       if (step !== 1) return;
       const items = e.clipboardData.files;
@@ -414,6 +630,7 @@ function App() {
   }, [step, setFileMeta]); 
 
   const handleDragOver = (e) => {
+    // ... (Your existing drag/drop handlers... no changes)
     e.preventDefault();
     e.stopPropagation();
     if (step === 1) setIsDragging(true);
@@ -442,6 +659,7 @@ function App() {
   // --- Step 1: Upload Handlers ---
 
   const handleFileSelect = (e) => {
+    // ... (Your existing file handlers... no changes)
     const selectedFiles = Array.from(e.target.files);
     setFiles(prev => [...prev, ...selectedFiles]);
     setFileMeta(prev => [...prev, ...selectedFiles.map(f => ({ name: f.name, size: f.size }))]);
@@ -452,6 +670,7 @@ function App() {
   };
 
   const uploadFiles = async () => {
+    // ... (Your existing uploadFiles function... no changes)
     const formData = new FormData();
     files.forEach(file => formData.append('files', file));
     addLog('📤 Uploading files to server...', 'info');
@@ -473,6 +692,7 @@ function App() {
   };
 
   const handleStep1 = async () => {
+    // ... (Your existing step 1 handler... no changes)
     if (files.length === 0) {
       setError('Files not found (they may have been cleared on refresh). Please re-select your files.');
       return;
@@ -494,6 +714,7 @@ function App() {
   // --- Step 2: Suggest Handlers ---
 
   const handleStep2 = async () => {
+    // ... (Your existing step 2 handler... no changes)
     if (uploadedFilePaths.length === 0) {
       setError('No files were uploaded. Please go back to Step 1.');
       return;
@@ -539,6 +760,7 @@ function App() {
   // --- Step 3: Review & Custom Metric Handlers ---
 
   const toggleMetricSelection = (index) => {
+    // ... (Your existing metric handlers... no changes)
     const metric = suggestedMetrics[index];
     const isSelected = selectedMetrics.some(m => m.name === metric.name);
     if (isSelected) {
@@ -573,6 +795,7 @@ function App() {
   // --- Step 4: Process Handlers ---
 
   const handleStep3 = async () => {
+    // ... (Your existing step 3 handler... no changes)
     if (selectedMetrics.length === 0) {
       setError('Please select at least one metric to extract');
       return;
@@ -583,7 +806,7 @@ function App() {
       setError('');
       setStep(4);
       addLog('🔄 Starting processing pipeline...', 'info');
-
+      // ... (rest of your step 3 logic)
       setCurrentStage('Step 1: Extracting Markdown');
       setProgress(10);
       addLog('📄 Extracting markdown (LandingAI)...', 'info');
@@ -651,6 +874,7 @@ function App() {
 
   // --- Step 5: Reset Handler ---
   const resetAppTask = () => {
+    // ... (Your existing resetAppTask function... no changes)
     setFiles([]);
     setFileMeta([]);
     setUploadedFilePaths([]);
@@ -668,6 +892,7 @@ function App() {
 
   // --- Settings: Change Password (FIXED) ---
   const handleChangePassword = async (e) => {
+    // ... (Your existing password change handler... no changes)
     e.preventDefault();
     setPasswordError('');
     setPasswordSuccess('');
@@ -709,10 +934,104 @@ function App() {
       addLog(`Password change failed: ${err.message}`, 'error');
     }
   };
+  
+  
+  // --- NEW: Analysis Dashboard Functions ---
+  
+  const fetchAnalysisMetadata = async () => {
+    setAnalysisError('');
+    addLog('Fetching analysis metadata...', 'info');
+    try {
+      const response = await fetch(`${API_BASE}/analysis/metadata`);
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.detail || 'Failed to fetch metadata');
+      }
+      const data = await response.json();
+      setAvailableData({
+        companies: data.companies || [],
+        metrics: data.metrics || [],
+        tables: data.tables || [],
+      });
+      addLog(`✅ Found ${data.companies?.length || 0} companies and ${data.metrics?.length || 0} metrics.`, 'success');
+    } catch (err) {
+      addLog(`Failed to fetch metadata: ${err.message}`, 'error');
+      setAnalysisError(`Failed to fetch metadata: ${err.message}`);
+    }
+  };
+  
+  // Fetch metadata when view changes to 'analysis'
+  useEffect(() => {
+    if (currentView === 'analysis' && availableData.companies.length === 0) {
+      fetchAnalysisMetadata();
+    }
+  }, [currentView, availableData.companies.length]);
+
+  
+
+  const handleSendAnalysisQuery = async () => {
+    if (!analysisQuery.trim() || isAnalyzing) return;
+
+    setIsAnalyzing(true);
+    setAnalysisError('');
+    const userMessage = { role: 'user', content: analysisQuery };
+    
+    // Use functional update to ensure we have the latest history
+    setAnalysisHistory(prevHistory => [...prevHistory, userMessage]);
+    const currentQuery = analysisQuery;
+    setAnalysisQuery('');
+
+    try {
+      // Get the history *before* adding the new model response
+      const historyForBackend = [...analysisHistory, userMessage]
+        .slice(-6) // Send last 6 messages
+        .map(msg => ({
+          role: msg.role === 'user' ? 'user' : 'model',
+          // Send simple string for model, as backend expects
+          content: msg.role === 'user' ? msg.content : (msg.content.summary || JSON.stringify(msg.content))
+        }));
+
+      const response = await fetch(`${API_BASE}/analysis/query`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: currentQuery,
+          // Send all *except* the latest user message
+          conversation_history: historyForBackend.slice(0, -1) 
+        }),
+      });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.detail || 'Analysis request failed');
+      }
+
+      const result = await response.json();
+      
+      if (result.error) {
+        addLog(`Analysis error: ${result.error}`, 'error');
+        setAnalysisHistory(prev => [...prev, { role: 'model', content: { summary: result.summary, insights: result.insights, error: result.error } }]);
+      } else {
+        addLog('Analysis successful', 'success');
+        setAnalysisHistory(prev => [...prev, { role: 'model', content: result }]);
+      }
+
+    } catch (err) {
+      addLog(`Analysis failed: ${err.message}`, 'error');
+      setAnalysisError(err.message);
+      setAnalysisHistory(prev => [...prev, { role: 'model', content: { summary: `Error: ${err.message}`, insights: [], error: err.message } }]);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+  
+  // --- END NEW ---
+
 
   // --- SNOWFLOW THEME ---
 
   const bgClass = darkMode 
+    // ... (Your existing theme classes... no changes)
     ? 'bg-gradient-to-br from-gray-900 via-blue-950 to-gray-900' 
     : 'bg-gradient-to-br from-slate-50 to-blue-100';
  
@@ -734,6 +1053,7 @@ function App() {
   // --- Login View ---
   if (showLogin) {
     return (
+      // ... (Your existing Login View... no changes)
       <div className={`min-h-screen ${bgClass} flex items-center justify-center p-4 relative overflow-hidden`}>
         <Snowfall />
         <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
@@ -821,6 +1141,7 @@ function App() {
 
       {/* Header */}
       <header className={`${darkMode ? 'bg-slate-900/50 border-slate-800' : 'bg-white/80 border-slate-200'} backdrop-blur-xl border-b sticky top-0 z-40`}>
+        {/* ... (Your existing Header... no changes) ... */}
         <div className="px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
@@ -842,7 +1163,6 @@ function App() {
             </div>
            
             <div className="flex items-center gap-3 relative">
-              {/* --- NEW: RESET TASK BUTTON --- */}
               <button 
                 onClick={resetTask}
                 title="Reset current task"
@@ -892,7 +1212,6 @@ function App() {
                 </div>
               )}
 
-              {/* --- DARK MODE TOGGLE --- */}
               <button
                 onClick={() => setDarkMode(!darkMode)}
                 className={`p-2 ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'} rounded-lg transition-colors`}
@@ -900,7 +1219,6 @@ function App() {
                 {darkMode ? <Sun className="w-5 h-5 text-yellow-400" /> : <Moon className="w-5 h-5 text-slate-600" />}
               </button>
 
-              {/* --- USER MENU BUTTON --- */}
               <div className="relative" ref={userMenuRef}>
                 <button
                   id="user-menu-button"
@@ -943,9 +1261,24 @@ function App() {
               <Home className="w-5 h-5" />
               <span className="font-medium">Dashboard & Process</span>
             </button>
+            
+            {/* --- NEW: Analysis Dashboard Button --- */}
+            <button
+              onClick={() => setCurrentView('analysis')}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+                currentView === 'analysis' 
+                  ? `${accentGradient} text-white shadow-lg` 
+                  : `${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'} ${textClass}`
+              }`}
+            >
+              <BarChart3 className="w-5 h-5" />
+              <span className="font-medium">Analysis Dashboard</span>
+            </button>
+            {/* --- END NEW --- */}
            
             <button
               onClick={() => setCurrentView('logs')}
+              // ... (Your existing Logs button)
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
                 currentView === 'logs' 
                   ? `${accentGradient} text-white shadow-lg` 
@@ -961,6 +1294,7 @@ function App() {
            
             <button
               onClick={() => setCurrentView('settings')}
+              // ... (Your existing Settings button)
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
                 currentView === 'settings' 
                   ? `${accentGradient} text-white shadow-lg` 
@@ -973,6 +1307,7 @@ function App() {
           </nav>
 
           <div className="p-4">
+            {/* ... (Your existing Quick Stats box... no changes) ... */}
             <div className={`${cardClass} rounded-xl p-4 space-y-3 transition-transform duration-300 hover:scale-105`}>
               <h3 className={`text-sm font-semibold ${textClass} mb-3`}>Quick Stats</h3>
               <div className="space-y-2">
@@ -1006,6 +1341,7 @@ function App() {
 
           {/* Step Indicator (Shared across Home View) */}
           {currentView === 'home' && (
+            // ... (Your existing Step Indicator... no changes)
             <div className={`${cardClass} rounded-2xl shadow-xl p-6 mb-8`}>
               <div className="flex items-center justify-between">
                 {[1, 2, 3, 4, 5].map((s) => (
@@ -1045,8 +1381,139 @@ function App() {
           )}
 
           {/* View Router */}
+          
+          {/* --- NEW: Analysis View --- */}
+          {currentView === 'analysis' && (
+            <FadeIn key="analysis-view">
+              <div className="h-[calc(100vh-120px)] flex flex-col lg:flex-row gap-6">
+                
+                {/* Left Side: Data Context */}
+                <div className={`lg:w-1/3 ${cardClass} rounded-2xl shadow-xl p-6 flex flex-col`}>
+                  <h2 className={`text-xl font-bold ${textClass} mb-4`}>Available Data</h2>
+                  <p className={`${textMutedClass} text-sm mb-4`}>
+                    Ask questions about the following companies and metrics.
+                  </p>
+                  
+                  <div className="flex-1 overflow-y-auto space-y-4 pr-2">
+                    <div>
+                      <h3 className={`font-semibold ${accentText} mb-2`}>Companies ({availableData.companies.length})</h3>
+                      <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto">
+                        {availableData.companies.length > 0 ? availableData.companies.map(c => (
+                          <span key={c} className={`px-2 py-0.5 text-xs rounded-full ${darkMode ? 'bg-slate-700' : 'bg-slate-200'}`}>
+                            {c}
+                          </span>
+                        )) : <p className={`text-sm ${textMutedClass}`}>No companies found.</p>}
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <h3 className={`font-semibold ${accentText} mb-2`}>Metrics ({availableData.metrics.length})</h3>
+                      <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto">
+                        {availableData.metrics.length > 0 ? availableData.metrics.map(m => (
+                          <span key={m} className={`px-2 py-0.5 text-xs rounded-full ${darkMode ? 'bg-slate-700' : 'bg-slate-200'}`}>
+                            {m}
+                          </span>
+                        )) : <p className={`text-sm ${textMutedClass}`}>No metrics found.</p>}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right Side: Chat Interface */}
+                <div className={`flex-1 ${cardClass} rounded-2xl shadow-xl flex flex-col overflow-hidden`}>
+                  {/* Chat History */}
+                  <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                    {analysisHistory.length === 0 && (
+                      <div className="text-center h-full flex flex-col justify-center items-center">
+                        <BarChart3 className={`w-16 h-16 ${textMutedClass} opacity-50 mb-4`} />
+                        <h3 className={`text-xl font-semibold ${textClass}`}>Analysis Dashboard</h3>
+                        <p className={textMutedClass}>Ask a question to get started.</p>
+                        <p className={`${textMutedClass} text-sm mt-2`}>e.g., "Compare revenue for all companies"</p>
+                      </div>
+                    )}
+
+                    {analysisHistory.map((msg, idx) => (
+                      <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                        {msg.role === 'user' ? (
+                          <div className={`p-4 rounded-2xl max-w-lg ${accentGradient} text-white`}>
+                            {msg.content}
+                          </div>
+                        ) : (
+                          <div className={`p-4 rounded-2xl max-w-full w-full ${darkMode ? 'bg-slate-800' : 'bg-slate-100'}`}>
+                            {msg.content.error ? (
+                              <div className="text-red-400">
+                                <p className="font-bold">Error:</p>
+                                <p>{msg.content.summary}</p>
+                              </div>
+                            ) : (
+                              <div className="space-y-4">
+                                <p>{msg.content.summary}</p>
+                                {msg.content.insights && msg.content.insights.length > 0 && (
+                                  <div>
+                                    <h4 className={`font-semibold ${textClass} mb-2`}>Insights:</h4>
+                                    <ul className="list-disc list-inside space-y-1">
+                                      {msg.content.insights.map((insight, i) => (
+                                        <li key={i}>{insight}</li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+                                {msg.content.chart && (
+                                  <div className={`${darkMode ? 'bg-slate-900' : 'bg-white'} p-4 rounded-lg`}>
+                                    <RenderAnalysisChart 
+                                      chart={msg.content.chart} 
+                                      darkMode={darkMode}
+                                      textMutedClass={textMutedClass}
+                                      accentText={accentText}
+                                    />
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    <div ref={analysisEndRef} />
+                  </div>
+
+                  {/* Chat Input */}
+                  <div className={`p-4 border-t ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
+                    {analysisError && (
+                      <div className="flex items-center gap-2 p-2 bg-red-500/20 text-red-300 rounded-lg mb-2 text-sm">
+                        <AlertCircle className="w-4 h-4" />
+                        <span>{analysisError}</span>
+                      </div>
+                    )}
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={analysisQuery}
+                        onChange={(e) => setAnalysisQuery(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSendAnalysisQuery()}
+                        placeholder={isAnalyzing ? "Analyzing..." : "Ask about the data..."}
+                        disabled={isAnalyzing}
+                        className={`w-full px-4 py-3 pr-12 rounded-xl ${darkMode ? 'bg-slate-700 text-white border-slate-600' : 'bg-white text-slate-900 border-slate-300'} border focus:outline-none focus:ring-2 ${accentRing} transition-all`}
+                      />
+                      <button
+                        onClick={handleSendAnalysisQuery}
+                        disabled={isAnalyzing || !analysisQuery.trim()}
+                        className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg ${accentGradient} ${accentHover} text-white disabled:from-gray-500 disabled:to-gray-600`}
+                      >
+                        {isAnalyzing ? <Loader className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </FadeIn>
+          )}
+          {/* --- END NEW --- */}
+          
           {currentView === 'logs' && (
             <FadeIn key="logs-view">
+              {/* ... (Your existing Logs view... no changes) ... */}
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
                   <div>
@@ -1100,14 +1567,12 @@ function App() {
 
           {currentView === 'settings' && (
             <FadeIn key="settings-view">
+              {/* ... (Your existing Settings view... no changes) ... */}
               <div className="space-y-6 max-w-2xl">
                 <div>
                   <h2 className={`text-3xl font-bold ${textClass}`}>Settings</h2>
                   <p className={textMutedClass}>Configure your application preferences</p>
                 </div>
-
-                {/* --- APPEARANCE SECTION REMOVED --- */}
-
                 <div className={`${cardClass} rounded-2xl shadow-xl p-8`}>
                   <h3 className={`text-xl font-semibold ${textClass} mb-4`}>Security</h3>
                   <form onSubmit={handleChangePassword} className="space-y-4">
@@ -1160,22 +1625,20 @@ function App() {
                     </button>
                   </form>
                 </div>
-
-                {/* --- API CONFIGURATION REMOVED --- */}
-               
               </div>
             </FadeIn>
           )}
 
           {currentView === 'home' && (
             <div className="space-y-6">
-              {/* Dynamic Step Content */}
+              {/* ... (Your existing Home view steps 1-5... no changes) ... */}
               <div className={`${cardClass} rounded-2xl shadow-2xl p-8`}>
                 <h2 className={`text-3xl font-bold ${textClass} mb-6`}>Document Extraction Pipeline</h2>
                
                 {/* Step 1: Upload */}
                 {step === 1 && (
                   <FadeIn key="step1">
+                    {/* ... (Your existing Step 1 JSX) ... */}
                     <div className="space-y-6">
                       <input
                         ref={fileInputRef}
@@ -1217,6 +1680,7 @@ function App() {
                         <div className="flex items-center gap-3 p-4 bg-red-500 bg-opacity-20 border border-red-500 rounded-lg">
                           <AlertCircle className="w-5 h-5 text-red-300" />
                           <p className="text-red-300">{error}</p>
+
                         </div>
                       )}
 
@@ -1244,6 +1708,7 @@ function App() {
                 {/* Step 2: Suggest Metrics */}
                 {step === 2 && (
                   <FadeIn key="step2">
+                    {/* ... (Your existing Step 2 JSX) ... */}
                     <div className="space-y-6">
                       <div className="text-center">
                         <Sparkles className={`w-12 h-12 ${accentText} mx-auto mb-2`} />
@@ -1302,6 +1767,7 @@ function App() {
                 {/* Step 3: Review Metrics */}
                 {step === 3 && (
                   <FadeIn key="step3">
+                    {/* ... (Your existing Step 3 JSX) ... */}
                     <div className="space-y-6">
                       <div className="flex items-center justify-between">
                         <div>
@@ -1430,6 +1896,7 @@ function App() {
                 {/* Step 4: Processing */}
                 {step === 4 && processing && (
                   <FadeIn key="step4">
+                    {/* ... (Your existing Step 4 JSX) ... */}
                     <div className="space-y-6 text-center">
                       <Activity className={`w-16 h-16 ${accentText} mx-auto mb-4 animate-pulse`} />
                       <h3 className={`text-2xl font-bold ${textClass}`}>{currentStage}</h3>
@@ -1447,6 +1914,7 @@ function App() {
                 {/* Step 5: Results */}
                 {step === 5 && results && (
                   <FadeIn key="step5">
+                    {/* ... (Your existing Step 5 JSX) ... */}
                     <div className="space-y-6">
                       <div className="bg-green-500/20 backdrop-blur-lg rounded-xl p-6 border border-green-500/30">
                         <div className="flex flex-wrap items-center justify-between gap-4">
@@ -1481,7 +1949,6 @@ function App() {
                               <h4 className={`font-semibold mb-3 pb-2 border-b ${darkMode ? 'border-slate-600' : 'border-slate-300'} ${textClass} truncate`}>
                                 {docName}
                               </h4>
-                              {/* --- START: FIX --- */}
                               <div className="space-y-2">
                                 {Object.entries(metrics).map(([key, value]) => (
                                   <div key={key} className="grid grid-cols-3 gap-4 items-start">
@@ -1494,12 +1961,10 @@ function App() {
                                   </div>
                                 ))}
                               </div>
-                              {/* --- END: FIX --- */}
                             </div>
                           ))
                         ) : (
                           <div className={`${darkMode ? 'bg-slate-700' : 'bg-slate-100'} p-4 rounded-xl`}>
-                            {/* --- START: FIX (for legacy fallback) --- */}
                             <div className="space-y-2">
                               {results.extracted_metrics && Object.entries(results.extracted_metrics).map(([key, value]) => (
                                 <div key={key} className="grid grid-cols-3 gap-4 items-start">
@@ -1512,7 +1977,6 @@ function App() {
                                 </div>
                               ))}
                             </div>
-                             {/* --- END: FIX --- */}
                           </div>
                         )}
                       </div>
@@ -1537,6 +2001,7 @@ function App() {
        
           {/* Edit Metric Modal */}
           {editingMetric && (
+            // ... (Your existing Edit Metric Modal... no changes)
             <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
               <div className={`${darkMode ? 'bg-slate-900' : 'bg-white'} rounded-2xl shadow-2xl max-w-md w-full p-6`}>
                 <h4 className={`text-xl font-bold ${textClass} mb-4`}>

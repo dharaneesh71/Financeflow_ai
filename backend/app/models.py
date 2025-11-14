@@ -88,3 +88,22 @@ class ProcessResponse(BaseModel):
     analysis: Optional[FinancialInsight] = None  # Legacy field for compatibility
     reasoning: Optional[str] = None  # Reasoning for metric suggestions
     success: Optional[bool] = True  # Success flag
+class AnalysisQuery(BaseModel):
+    query: str
+    conversation_history: Optional[List[Dict[str, str]]] = []
+
+class ChartSpec(BaseModel):
+    chart_type: str  # 'line', 'bar', 'pie', 'table'
+    title: str
+    x_axis: str
+    y_axis: str
+    series: List[str]
+    data: List[Dict[str, Any]]
+
+class AnalysisResponse(BaseModel):
+    summary: str
+    insights: List[str]
+    chart: Optional[ChartSpec] = None
+    available_companies: Optional[List[str]] = None
+    available_metrics: Optional[List[str]] = None
+    error: Optional[str] = None
