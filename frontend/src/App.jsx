@@ -293,7 +293,7 @@ const RenderAnalysisChart = ({ chart, darkMode, textMutedClass, accentText }) =>
               {cleanedData.map((row, idx) => (
                 <tr key={idx} className={`border-b ${darkMode ? 'border-slate-700' : 'border-gray-200'} ${darkMode ? 'bg-slate-800/50' : 'bg-white/50'}`}>
                   {Object.values(row).map((val, i) => (
-                    <td key={i} className="px-6 py-4 whitespace-nowrap">
+                    <td key={i} className="px-6 py-4 whitespace-nowTwrap">
                       {typeof val === 'number' ? val.toLocaleString() : String(val)}
                     </td>
                   ))}
@@ -809,6 +809,25 @@ function App() {
       setSelectedMetrics(prev => [...prev, metric]);
     }
   };
+
+  // --- NEW: SELECT/DESELECT ALL ---
+  const handleSelectAll = () => {
+    // This will select all *suggested* metrics
+    // It creates a new Set to avoid duplicates if some are already selected
+    const allMetrics = [...selectedMetrics];
+    suggestedMetrics.forEach(sm => {
+      if (!allMetrics.some(m => m.name === sm.name)) {
+        allMetrics.push(sm);
+      }
+    });
+    setSelectedMetrics(allMetrics);
+  };
+  
+  const handleDeselectAll = () => {
+    // This clears all selected metrics (suggested and custom)
+    setSelectedMetrics([]);
+  };
+  // --- END NEW ---
 
   const addMetric = () => {
     setEditingMetric({ name: '', type: 'str', description: '' });
@@ -1831,19 +1850,36 @@ function App() {
                   <FadeIn key="step3">
                     {/* ... (Your existing Step 3 JSX) ... */}
                     <div className="space-y-6">
-                      <div className="flex items-center justify-between">
+                      {/* --- MODIFIED: Added flex-wrap and new buttons --- */}
+                      <div className="flex items-center justify-between flex-wrap gap-2">
                         <div>
                           <h3 className={`text-xl font-semibold ${textClass}`}>Review & Customize</h3>
                           <p className={textMutedClass}>Select, edit, or add metrics before final processing.</p>
                         </div>
-                        <button
-                          onClick={addMetric}
-                          className={`px-4 py-2 ${accentGradient} ${accentHover} text-white rounded-lg flex items-center gap-2 transition-colors`}
-                        >
-                          <Plus className="w-4 h-4" />
-                          Add Custom
-                        </button>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={handleSelectAll}
+                            className={`px-3 py-2 text-xs bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 rounded-lg transition-colors`}
+                          >
+                            Select All
+                          </button>
+                          <button
+                            onClick={handleDeselectAll}
+                            className={`px-3 py-2 text-xs bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg transition-colors`}
+                          >
+                            Deselect All
+                          </button>
+                          <button
+                            onClick={addMetric}
+                            className={`px-4 py-2 ${accentGradient} ${accentHover} text-white rounded-lg flex items-center gap-2 transition-colors`}
+                          >
+                            <Plus className="w-4 h-4" />
+                            Add Custom
+                          </button>
+                        </div>
                       </div>
+                      {/* --- END MODIFICATION --- */}
+
 
                       {suggestedMetrics.length > 0 && (
                         <div>
@@ -2048,12 +2084,16 @@ function App() {
                         <h4 className={`font-bold ${textClass} mb-3 flex items-center gap-2`}>
                           <Database className="w-5 h-5 text-green-400" /> Snowflake Deployment Details
                         </h4>
-                        <p className={textMMutedClass}>
-                          <span className="font-semibold">Status:</span> {results.deployment.status}
+                        
+                        {/* --- FIXED: Typo and added optional chaining --- */}
+                        <p className={textMutedClass}>
+                          <span className="font-semibold">Status:</span> {results.deployment?.status || 'N/A'}
                         </p>
                         <p className={textMutedClass}>
-                          <span className="font-semibold">Target:</span> {results.deployment.database}.{results.deployment.schema}
+                          <span className="font-semibold">Target:</span> {results.deployment?.database}.{results.deployment?.schema}
                         </p>
+                        {/* --- END FIX --- */}
+                        
                       </div>
                     </div>
                   </FadeIn>
