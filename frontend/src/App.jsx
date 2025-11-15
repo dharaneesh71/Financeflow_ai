@@ -5,8 +5,9 @@ import {
   Activity, X, Sparkles, Edit, Trash2, Plus, 
   ArrowRight, ArrowLeft, LogOut, User, Home, Settings,
   Clock, Zap, Shield, Menu, Bell, Eye, 
-  EyeOff, Lock, Mail, BarChart3, // <-- NEW: Added BarChart3
-  MessageSquare, Send // <-- NEW: Added chat icons
+  EyeOff, Lock, Mail, BarChart3,
+  MessageSquare, Send,
+  RefreshCw
 } from 'lucide-react';
 // --- NEW: Import charting components ---
 import {
@@ -200,8 +201,13 @@ const TableModal = ({ results, onClose, darkMode, textClass, textMutedClass, car
   );
 };
 
-// --- NEW: Chart Rendering Component (FIXED) ---
+// --- THIS COMPONENT IS MODIFIED ---
+// Replace your RenderAnalysisChart component with this fixed version
+// Replace your RenderAnalysisChart component with this clean version
+
 const RenderAnalysisChart = ({ chart, darkMode, textMutedClass, accentText }) => {
+  console.log('📊 Chart data received:', chart);
+  
   if (!chart || !chart.data || chart.data.length === 0) {
     return (
       <div className={`p-4 text-center ${textMutedClass}`}>
@@ -211,36 +217,38 @@ const RenderAnalysisChart = ({ chart, darkMode, textMutedClass, accentText }) =>
   }
 
   const { chart_type, title, x_axis, y_axis, series, data } = chart;
+  
+  console.log('Chart type:', chart_type);
+  console.log('X-axis:', x_axis);
+  console.log('Y-axis:', y_axis);
+  console.log('Series:', series);
+  console.log('Raw data:', data);
+  
   const strokeColor = darkMode ? '#94a3b8' : '#64748b';
   const COLORS = ['#0ea5e9', '#06b6d4', '#14b8a6', '#f59e0b', '#ef4444'];
   
-  // Clean up company names (remove file paths and extensions)
+  // Clean up company names
   const cleanCompanyName = (name) => {
     if (!name) return name;
-    // Remove file paths (uploads\, .pdf, etc)
-    let cleaned = name.replace(/^.*[\\\/]/, ''); // Remove path
-    cleaned = cleaned.replace(/\.(pdf|png|jpg|jpeg)$/i, ''); // Remove extensions
-    // If it looks like a document ID, keep it as is
+    let cleaned = name.replace(/^.*[\\\/]/, '');
+    cleaned = cleaned.replace(/\.(pdf|png|jpg|jpeg)$/i, '');
     return cleaned;
   };
 
-  // --- NEW: Function to shorten labels for the X-axis ---
+  // Format X-axis labels
   const formatXAxisTick = (tick) => {
     if (typeof tick !== 'string') return tick;
-    // Specific shortening rules
     if (tick.includes("COURSERA")) return "Coursera";
     if (tick.includes("Alphabet")) return "Alphabet";
     if (tick.includes("Apple")) return "Apple";
     if (tick.includes("Microsoft")) return "Microsoft";
-    
-    // Generic shortening rule
     if (tick.length > 15) {
       return `${tick.substring(0, 12)}...`;
     }
     return tick;
   };
   
-  // Clean data for display
+  // Clean data
   const cleanedData = data.map(row => {
     const newRow = { ...row };
     if (newRow[x_axis]) {
@@ -255,34 +263,66 @@ const RenderAnalysisChart = ({ chart, darkMode, textMutedClass, accentText }) =>
     return newRow;
   });
 
-  // --- Safety check if cleanedData is empty or first row is missing ---
+  console.log('Cleaned data:', cleanedData);
+
   if (cleanedData.length === 0) {
-      return (
+    return (
       <div className={`p-4 text-center ${textMutedClass}`}>
         No data to display after cleaning.
       </div>
     );
   }
-  // --- End safety check ---
 
+  // TABLE VIEW - render separately
+  if (chart_type === 'table') {
+    return (
+      <div className="w-full">
+        <h4 className={`text-lg font-semibold mb-4 text-center ${accentText}`}>{title}</h4>
+        <div className="overflow-auto max-h-96 relative rounded-lg border border-gray-500/30">
+          <table className="w-full text-left text-sm">
+            <thead className={`text-xs uppercase sticky top-0 ${darkMode ? 'bg-slate-800' : 'bg-gray-100'}`}>
+              <tr>
+                {cleanedData.length > 0 && Object.keys(cleanedData[0]).map((key) => (
+                  <th key={key} scope="col" className="px-6 py-3 whitespace-nowrap">
+                    {key.replace(/_/g, ' ')}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {cleanedData.map((row, idx) => (
+                <tr key={idx} className={`border-b ${darkMode ? 'border-slate-700' : 'border-gray-200'} ${darkMode ? 'bg-slate-800/50' : 'bg-white/50'}`}>
+                  {Object.values(row).map((val, i) => (
+                    <td key={i} className="px-6 py-4 whitespace-nowrap">
+                      {typeof val === 'number' ? val.toLocaleString() : String(val)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
+  // CHART VIEWS (Bar, Line, Pie) - all in ResponsiveContainer
   return (
-    <div className="h-80 w-full">
+    <div className="w-full">
       <h4 className={`text-lg font-semibold mb-4 text-center ${accentText}`}>{title}</h4>
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="100%" height={400}>
         {chart_type === 'bar' && (
-          <BarChart data={cleanedData}>
+          <BarChart data={cleanedData} margin={{ top: 20, right: 30, left: 20, bottom: 80 }}>
             <CartesianGrid strokeDasharray="3 3" stroke={strokeColor} opacity={0.3} />
-            {/* --- MODIFIED XAXIS --- */}
             <XAxis 
-              dataKey={x_axis} 
+              dataKey={x_axis || 'COMPANY_NAME'} 
               stroke={strokeColor} 
               interval={0} 
               angle={-45} 
               textAnchor="end" 
-              height={70} 
-              tickFormatter={formatXAxisTick} 
+              height={80}
+              tickFormatter={formatXAxisTick}
             />
-            {/* --- END MODIFICATION --- */}
             <YAxis stroke={strokeColor} />
             <Tooltip
               contentStyle={{
@@ -290,32 +330,36 @@ const RenderAnalysisChart = ({ chart, darkMode, textMutedClass, accentText }) =>
                 borderColor: darkMode ? '#334155' : '#e2e8f0',
                 borderRadius: '0.5rem',
               }}
+              formatter={(value) => typeof value === 'number' ? value.toLocaleString() : value}
             />
-            <Legend />
-            {series.length > 0 ? (
+            <Legend 
+              wrapperStyle={{ paddingTop: '20px' }}
+              iconType="rect"
+              iconSize={14}
+              formatter={(value) => <span style={{ color: darkMode ? '#e2e8f0' : '#1e293b', marginLeft: '5px' }}>{value}</span>}
+            />
+            {series && series.length > 0 ? (
               series.map((s, idx) => (
                 <Bar key={s} dataKey={s} fill={COLORS[idx % COLORS.length]} />
               ))
             ) : (
-              <Bar dataKey={y_axis} fill={COLORS[0]} />
+              <Bar dataKey={y_axis || Object.keys(cleanedData[0]).find(k => k !== x_axis)} fill={COLORS[0]} />
             )}
           </BarChart>
         )}
 
         {chart_type === 'line' && (
-          <LineChart data={cleanedData}>
+          <LineChart data={cleanedData} margin={{ top: 20, right: 30, left: 20, bottom: 80 }}>
             <CartesianGrid strokeDasharray="3 3" stroke={strokeColor} opacity={0.3} />
-            {/* --- MODIFIED XAXIS --- */}
             <XAxis 
-              dataKey={x_axis} 
+              dataKey={x_axis || 'COMPANY_NAME'} 
               stroke={strokeColor} 
               interval={0} 
               angle={-45} 
               textAnchor="end" 
-              height={70} 
-              tickFormatter={formatXAxisTick} 
+              height={80}
+              tickFormatter={formatXAxisTick}
             />
-            {/* --- END MODIFICATION --- */}
             <YAxis stroke={strokeColor} />
             <Tooltip
               contentStyle={{
@@ -323,14 +367,20 @@ const RenderAnalysisChart = ({ chart, darkMode, textMutedClass, accentText }) =>
                 borderColor: darkMode ? '#334155' : '#e2e8f0',
                 borderRadius: '0.5rem',
               }}
+              formatter={(value) => typeof value === 'number' ? value.toLocaleString() : value}
             />
-            <Legend />
-            {series.length > 0 ? (
+            <Legend 
+              wrapperStyle={{ paddingTop: '20px' }}
+              iconType="rect"
+              iconSize={14}
+              formatter={(value) => <span style={{ color: darkMode ? '#e2e8f0' : '#1e293b', marginLeft: '5px' }}>{value}</span>}
+            />
+            {series && series.length > 0 ? (
               series.map((s, idx) => (
-                <Line key={s} type="monotone" dataKey={s} stroke={COLORS[idx % COLORS.length]} />
+                <Line key={s} type="monotone" dataKey={s} stroke={COLORS[idx % COLORS.length]} strokeWidth={2} />
               ))
             ) : (
-              <Line type="monotone" dataKey={y_axis} stroke={COLORS[0]} />
+              <Line type="monotone" dataKey={y_axis || Object.keys(cleanedData[0]).find(k => k !== x_axis)} stroke={COLORS[0]} strokeWidth={2} />
             )}
           </LineChart>
         )}
@@ -339,13 +389,13 @@ const RenderAnalysisChart = ({ chart, darkMode, textMutedClass, accentText }) =>
           <PieChart>
             <Pie
               data={cleanedData} 
-              dataKey={y_axis}
-              nameKey={x_axis}
+              dataKey={y_axis || Object.keys(cleanedData[0]).find(k => k !== x_axis && typeof cleanedData[0][k] === 'number')}
+              nameKey={x_axis || 'COMPANY_NAME'}
               cx="50%"
               cy="50%"
-              outerRadius={100}
+              outerRadius={120}
               fill="#8884d8"
-              label
+              label={(entry) => `${entry[x_axis || 'COMPANY_NAME']}: ${entry[y_axis]}`}
             >
               {cleanedData.map((entry, index) => (
                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
@@ -357,41 +407,21 @@ const RenderAnalysisChart = ({ chart, darkMode, textMutedClass, accentText }) =>
                 borderColor: darkMode ? '#334155' : '#e2e8f0',
                 borderRadius: '0.5rem',
               }}
+              formatter={(value) => typeof value === 'number' ? value.toLocaleString() : value}
             />
-            <Legend />
+            <Legend 
+              wrapperStyle={{ paddingTop: '20px' }}
+              iconType="rect"
+              iconSize={14}
+              formatter={(value) => <span style={{ color: darkMode ? '#e2e8f0' : '#1e293b', marginLeft: '5px' }}>{value}</span>}
+            />
           </PieChart>
-        )}
-        
-        {chart_type === 'table' && (
-          <div className="overflow-auto h-full relative rounded-lg border border-gray-500/30">
-            <table className="w-full text-left text-sm">
-              <thead className={`text-xs uppercase ${darkMode ? 'bg-slate-800' : 'bg-gray-100'}`}>
-                <tr>
-                  {cleanedData.length > 0 && Object.keys(cleanedData[0]).map((key) => (
-                    <th key={key} scope="col" className="px-6 py-3">
-                      {key.replace(/_/g, ' ')}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {cleanedData.map((row, idx) => (
-                  <tr key={idx} className={`border-b ${darkMode ? 'border-slate-700' : 'border-gray-200'} ${darkMode ? 'bg-slate-800/50' : 'bg-white/50'}`}>
-                    {Object.values(row).map((val, i) => (
-                      <td key={i} className="px-6 py-4">
-                        {String(val)}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
         )}
       </ResponsiveContainer>
     </div>
   );
 };
+// --- END MODIFICATION ---
 
 function App() {
  
@@ -570,9 +600,10 @@ function App() {
     }
   };
  
-  // Clears only the SESSION state (the task)
+  // --- THIS FUNCTION HAS BEEN MODIFIED ---
+  // Clears both SESSION task state and ANALYSIS state
   const resetTask = () => {
-    // ... (Your existing resetTask function... no changes)
+    // Reset pipeline state
     setStep(1);
     setFiles([]);
     setFileMeta([]);
@@ -582,13 +613,22 @@ function App() {
     setSelectedMetrics([]);
     setResults(null);
     setError('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+
+    // Reset analysis state
+    setAnalysisHistory([]);
+    setAvailableData({ companies: [], metrics: [], tables: [] });
+    setAnalysisQuery('');
+    setIsAnalyzing(false);
+    setAnalysisError('');
    
+    // Clear all session storage except auth
     Object.keys(sessionStorage).forEach(key => {
       if (key.startsWith('snowflow-') && key !== 'snowflow-isAuthenticated' && key !== 'snowflow-username') {
         sessionStorage.removeItem(key);
       }
     });
-    addLog('🔄 Task Reset', 'info');
+    addLog('🔄 App Reset', 'info');
   };
  
   const handleLogout = () => {
@@ -874,20 +914,8 @@ function App() {
 
   // --- Step 5: Reset Handler ---
   const resetAppTask = () => {
-    // ... (Your existing resetAppTask function... no changes)
-    setFiles([]);
-    setFileMeta([]);
-    setUploadedFilePaths([]);
-    setResults(null);
-    setError('');
-    setCurrentStage('');
-    setProgress(0);
-    setStep(1);
-    setUserPrompt('');
-    setSuggestedMetrics([]);
-    setSelectedMetrics([]);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-    addLog('🔄 Task Reset', 'info');
+    // This function is now an alias for the main resetTask
+    resetTask();
   };
 
   // --- Settings: Change Password (FIXED) ---
@@ -971,16 +999,16 @@ function App() {
 
   const handleSendAnalysisQuery = async () => {
     if (!analysisQuery.trim() || isAnalyzing) return;
-
+  
     setIsAnalyzing(true);
-    setAnalysisError('');
+    setAnalysisError(''); // Clear any previous errors
     const userMessage = { role: 'user', content: analysisQuery };
     
     // Use functional update to ensure we have the latest history
     setAnalysisHistory(prevHistory => [...prevHistory, userMessage]);
     const currentQuery = analysisQuery;
     setAnalysisQuery('');
-
+  
     try {
       // Get the history *before* adding the new model response
       const historyForBackend = [...analysisHistory, userMessage]
@@ -990,7 +1018,7 @@ function App() {
           // Send simple string for model, as backend expects
           content: msg.role === 'user' ? msg.content : (msg.content.summary || JSON.stringify(msg.content))
         }));
-
+  
       const response = await fetch(`${API_BASE}/analysis/query`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1000,26 +1028,68 @@ function App() {
           conversation_history: historyForBackend.slice(0, -1) 
         }),
       });
-
+  
       if (!response.ok) {
         const errData = await response.json();
-        throw new Error(errData.detail || 'Analysis request failed');
+        // Don't throw - handle gracefully
+        const errorMessage = errData.detail || 'I had trouble processing your request. Could you try rephrasing it?';
+        
+        addLog(`Analysis request failed: ${errorMessage}`, 'warning');
+        setAnalysisHistory(prev => [...prev, { 
+          role: 'model', 
+          content: { 
+            summary: "I'm having trouble understanding your request.",
+            insights: [
+              "- Could you try rephrasing your question?",
+              "- Try asking about specific companies or metrics",
+              "- For example: 'Compare the assets of Microsoft and Apple'",
+              "- Or: 'Which company has the highest total equity?'"
+            ]
+          } 
+        }]);
+        setIsAnalyzing(false);
+        return; // Don't throw, just return
       }
-
+  
       const result = await response.json();
       
-      if (result.error) {
-        addLog(`Analysis error: ${result.error}`, 'error');
-        setAnalysisHistory(prev => [...prev, { role: 'model', content: { summary: result.summary, insights: result.insights, error: result.error } }]);
+      // Check if result has an error field (but not a hard error)
+      if (result.error && !result.summary) {
+        // Backend returned an error object
+        addLog(`Analysis issue: ${result.error}`, 'info');
+        setAnalysisHistory(prev => [...prev, { 
+          role: 'model', 
+          content: { 
+            summary: "Let me help you rephrase that.",
+            insights: result.insights || [
+              "- Try asking in a different way",
+              "- Be more specific about what you want to know",
+              "- I can help with comparisons, rankings, and financial metrics"
+            ]
+          } 
+        }]);
       } else {
+        // Successful response
         addLog('Analysis successful', 'success');
         setAnalysisHistory(prev => [...prev, { role: 'model', content: result }]);
       }
-
+  
     } catch (err) {
-      addLog(`Analysis failed: ${err.message}`, 'error');
-      setAnalysisError(err.message);
-      setAnalysisHistory(prev => [...prev, { role: 'model', content: { summary: `Error: ${err.message}`, insights: [], error: err.message } }]);
+      // Network or parsing errors - be graceful
+      console.error('Analysis error:', err);
+      addLog(`Analysis communication error: ${err.message}`, 'warning');
+      
+      setAnalysisHistory(prev => [...prev, { 
+        role: 'model', 
+        content: { 
+          summary: "I'm having trouble connecting right now.",
+          insights: [
+            "- Please check your internet connection",
+            "- Try your question again in a moment",
+            "- If the problem persists, contact support"
+          ]
+        } 
+      }]);
     } finally {
       setIsAnalyzing(false);
     }
@@ -1163,13 +1233,15 @@ function App() {
             </div>
            
             <div className="flex items-center gap-3 relative">
+              {/* --- THIS BUTTON HAS BEEN MODIFIED --- */}
               <button 
                 onClick={resetTask}
-                title="Reset current task"
+                title="Reset & Refresh"
                 className={`relative p-2 ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'} rounded-lg transition-colors`}
               >
-                <Zap className="w-5 h-5" />
+                <RefreshCw className="w-5 h-5" />
               </button>
+              {/* --- END MODIFICATION --- */}
 
               <button 
                 id="notification-button"
@@ -1326,6 +1398,7 @@ function App() {
                   <span className={`text-sm font-bold ${textClass}`}>{dashboardStats.avgProcessTime}</span>
                 </div>
                  <div className="flex items-center justify-between">
+                  {/* --- THIS LINE IS FIXED --- */}
                   <span className={`text-xs ${textMutedClass}`}>Active</span>
                   <span className={`text-sm font-bold ${dashboardStats.activeUsers > 0 ? 'text-cyan-400' : textClass}`}>
                     {dashboardStats.activeUsers}
@@ -1440,36 +1513,30 @@ function App() {
                           </div>
                         ) : (
                           <div className={`p-4 rounded-2xl max-w-full w-full ${darkMode ? 'bg-slate-800' : 'bg-slate-100'}`}>
-                            {msg.content.error ? (
-                              <div className="text-red-400">
-                                <p className="font-bold">Error:</p>
-                                <p>{msg.content.summary}</p>
-                              </div>
-                            ) : (
-                              <div className="space-y-4">
-                                <p>{msg.content.summary}</p>
-                                {msg.content.insights && msg.content.insights.length > 0 && (
-                                  <div>
-                                    <h4 className={`font-semibold ${textClass} mb-2`}>Insights:</h4>
-                                    <ul className="list-disc list-inside space-y-1">
-                                      {msg.content.insights.map((insight, i) => (
-                                        <li key={i}>{insight}</li>
-                                      ))}
-                                    </ul>
-                                  </div>
-                                )}
-                                {msg.content.chart && (
-                                  <div className={`${darkMode ? 'bg-slate-900' : 'bg-white'} p-4 rounded-lg`}>
-                                    <RenderAnalysisChart 
-                                      chart={msg.content.chart} 
-                                      darkMode={darkMode}
-                                      textMutedClass={textMutedClass}
-                                      accentText={accentText}
-                                    />
-                                  </div>
-                                )}
-                              </div>
-                            )}
+                            {/* REMOVED: Red error styling - now all responses look the same */}
+                            <div className="space-y-4">
+                              <p>{msg.content.summary}</p>
+                              {msg.content.insights && msg.content.insights.length > 0 && (
+                                <div>
+                                  <h4 className={`font-semibold ${textClass} mb-2`}>Insights:</h4>
+                                  <ul className="space-y-1">
+                                    {msg.content.insights.map((insight, i) => (
+                                      <li key={i} className={textMutedClass}>{insight}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              {msg.content.chart && (
+                                <div className={`${darkMode ? 'bg-slate-900' : 'bg-white'} p-4 rounded-lg`}>
+                                  <RenderAnalysisChart 
+                                    chart={msg.content.chart} 
+                                    darkMode={darkMode}
+                                    textMutedClass={textMutedClass}
+                                    accentText={accentText}
+                                  />
+                                </div>
+                              )}
+                            </div>
                           </div>
                         )}
                       </div>
@@ -1479,12 +1546,7 @@ function App() {
 
                   {/* Chat Input */}
                   <div className={`p-4 border-t ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
-                    {analysisError && (
-                      <div className="flex items-center gap-2 p-2 bg-red-500/20 text-red-300 rounded-lg mb-2 text-sm">
-                        <AlertCircle className="w-4 h-4" />
-                        <span>{analysisError}</span>
-                      </div>
-                    )}
+                    {/* REMOVED: analysisError display - errors are now shown in chat */}
                     <div className="relative">
                       <input
                         type="text"
@@ -1968,6 +2030,7 @@ function App() {
                             <div className="space-y-2">
                               {results.extracted_metrics && Object.entries(results.extracted_metrics).map(([key, value]) => (
                                 <div key={key} className="grid grid-cols-3 gap-4 items-start">
+                                  {/* --- THIS LINE IS FIXED --- */}
                                   <p className={`${textMutedClass} col-span-1 break-words capitalize`}>
                                     {key.replace(/_/g, ' ')}:
                                   </p>
@@ -1985,7 +2048,7 @@ function App() {
                         <h4 className={`font-bold ${textClass} mb-3 flex items-center gap-2`}>
                           <Database className="w-5 h-5 text-green-400" /> Snowflake Deployment Details
                         </h4>
-                        <p className={textMutedClass}>
+                        <p className={textMMutedClass}>
                           <span className="font-semibold">Status:</span> {results.deployment.status}
                         </p>
                         <p className={textMutedClass}>
