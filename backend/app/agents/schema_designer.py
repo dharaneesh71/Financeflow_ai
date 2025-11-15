@@ -30,7 +30,9 @@ class SchemaDesigner:
         
         # If we have metrics definitions, create schema for metrics
         # (extracted_metrics is not required for schema design, only metrics definitions are needed)
+        print("metrics-->", metrics)
         if metrics:
+            print("metrics are not null")
             return self._create_metrics_schema(extracted_metrics or {}, metrics)
         
         # Otherwise use the standard star schema

@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, create_model
 import google.generativeai as genai
 from app.models import ExtractionResult, ExtractedField, DocumentType
 from app.config import get_settings
+from app.agents.prompts import extraction_prompt, extraction_prompt_with_user_input
 
 settings = get_settings()
 
@@ -225,7 +226,7 @@ class DocumentExtractor:
     
     async def suggest_metrics_from_markdown(
         self, 
-        markdown_path: str, 
+        markdown_paths_list: str, 
         user_prompt: Optional[str] = None
     ) -> Dict[str, Any]:
         """Suggest metrics that can be extracted from markdown using Gemini"""
@@ -238,84 +239,24 @@ class DocumentExtractor:
         
         try:
             # Read markdown file
-            markdown_content = Path(markdown_path).read_text(encoding='utf-8')
+            markdown_preview = ""
+            for markdown_path in markdown_paths_list:
+
+                markdown_content = Path(markdown_path).read_text(encoding='utf-8')
             
-            # Limit content size for Gemini (keep first 10000 chars, which is usually enough)
-            # Gemini has context limits, but 10k chars should be fine for most documents
-            max_chars = 10000
-            if len(markdown_content) > max_chars:
-                markdown_preview = markdown_content[:max_chars] + f"\n\n... (truncated, total length: {len(markdown_content)} characters)"
-            else:
-                markdown_preview = markdown_content
+                # Limit content size for Gemini (keep first 10000 chars, which is usually enough)
+                # Gemini has context limits, but 10k chars should be fine for most documents
+                max_chars = 10000
+                if len(markdown_content) > max_chars:
+                    markdown_preview += markdown_content[:max_chars] + f"\n\n... (truncated, total length: {len(markdown_content)} characters)"
+                else:
+                    markdown_preview += markdown_content
             
             # Build prompt for Gemini
             if user_prompt:
-                prompt = f"""You are a financial data extraction expert. A user wants to extract specific metrics from a financial document.
-
-User's requirements: {user_prompt}
-
-Here is the markdown content of the document:
-{markdown_preview}
-
-Based on the user's requirements and the document content, suggest metrics that can be extracted. For each metric, provide:
-1. The metric name (in snake_case for Python)
-2. The data type (str, int, float, bool)
-3. A clear description
-
-Return ONLY valid JSON format (no markdown, no explanations):
-{{
-  "suggested_metrics": [
-    {{
-      "name": "account_holder_name",
-      "type": "str",
-      "description": "The name of the account holder"
-    }},
-    {{
-      "name": "total_assets",
-      "type": "float",
-      "description": "Total assets amount"
-    }}
-  ],
-  "reasoning": "Brief explanation of why these metrics are relevant"
-}}"""
+                prompt = extraction_prompt_with_user_input(user_prompt, markdown_preview)
             else:
-                prompt = f"""You are a financial data extraction expert. Analyze this financial document and suggest metrics that can be extracted.
-
-Here is the markdown content of the document:
-{markdown_preview}
-
-Suggest relevant metrics that can be extracted from this document. For each metric, provide:
-1. The metric name (in snake_case for Python)
-2. The data type (str, int, float, bool)
-3. A clear description
-
-Focus on:
-- Key financial figures (amounts, balances, totals)
-- Identifiers (account numbers, names, dates)
-- Counts (number of transactions, deposits, etc.)
-- Calculated metrics (ratios, percentages)
-
-Return ONLY valid JSON format (no markdown, no explanations):
-{{
-  "suggested_metrics": [
-    {{
-      "name": "account_holder_name",
-      "type": "str",
-      "description": "The name of the account holder"
-    }},
-    {{
-      "name": "total_assets",
-      "type": "float",
-      "description": "Total assets amount"
-    }},
-    {{
-      "name": "number_deposits",
-      "type": "int",
-      "description": "The number of deposits"
-    }}
-  ],
-  "reasoning": "Brief explanation of why these metrics are relevant"
-}}"""
+                prompt = extraction_prompt(markdown_preview)
             
             print(f"  🤖 Calling Gemini AI to suggest metrics...")
             response = self.gemini_model.generate_content(prompt)

@@ -102,9 +102,9 @@ class MetricExtractionPipeline:
 
     async def suggest_metrics_node(self, state: MetricState) -> dict:
         print("--- (Metric Graph) 1b. Suggesting Metrics ---")
-        first_markdown_path = state["markdown_paths"][0]
+        markdown_paths_list = state["markdown_paths"]
         suggestions = await self.extractor.suggest_metrics_from_markdown(
-            first_markdown_path, 
+            markdown_paths_list, 
             state["user_prompt"]
         )
         return {

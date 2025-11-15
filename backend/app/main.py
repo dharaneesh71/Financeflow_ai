@@ -8,6 +8,7 @@ import traceback
 from datetime import time  # <-- Keep this import
 import time # <-- Import the time module
 from app.agents.orchestrator import MetricExtractionPipeline, MetricState
+from app.agents.extractor import DocumentExtractor
 from app.models import ProcessRequest, ProcessResponse, MetricDefinition
 from app.config import get_settings
 
@@ -189,24 +190,34 @@ async def process_documents(request: ProcessRequest):
                 for metric in request.selected_metrics
             ]
         
-        # For process step, if we have file_paths but no markdown_paths, extract markdown first
+        # For process step, get markdown paths (use existing files or extract if needed)
         markdown_paths = []
         if current_step == "process" and request.file_paths:
-            # Extract markdown from files if not already extracted
-            from app.agents.extractor import DocumentExtractor
+
             extractor = DocumentExtractor()
-            print(f"  📄 Extracting markdown from {len(request.file_paths)} file(s) for processing...")
+            
             for file_path in request.file_paths:
-                try:
-                    md_path = await extractor.extract_markdown_from_document(
-                        file_path=file_path,
-                        output_dir=settings.upload_dir
-                    )
-                    markdown_paths.append(md_path)
-                except Exception as e:
-                    print(f"  ⚠️  Error extracting markdown from {file_path}: {e}")
-                    # Continue with other files
-            print(f"  ✅ Extracted {len(markdown_paths)} markdown file(s)")
+                # Check if markdown file already exists
+                input_filename = os.path.basename(file_path)
+                base_name = os.path.splitext(input_filename)[0]
+                expected_md_path = os.path.join(settings.upload_dir, f"{base_name}.md")
+                
+                if os.path.exists(expected_md_path):
+                    print(f"  📄 Using existing markdown: {expected_md_path}")
+                    markdown_paths.append(expected_md_path)
+                else:
+                    print(f"  📄 Extracting markdown from: {file_path}")
+                    try:
+                        md_path = await extractor.extract_markdown_from_document(
+                            file_path=file_path,
+                            output_dir=settings.upload_dir
+                        )
+                        markdown_paths.append(md_path)
+                    except Exception as e:
+                        print(f"  ⚠️  Error extracting markdown from {file_path}: {e}")
+                        # Continue with other files
+            
+            print(f"  ✅ Ready to process {len(markdown_paths)} markdown file(s)")
         
         # Prepare initial state for MetricExtractionPipeline
         initial_state: MetricState = {
